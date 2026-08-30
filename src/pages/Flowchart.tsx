@@ -257,17 +257,106 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     setEdgeMenu(null);
   }, [edgeMenu]);
 
-  // Auto-layout: arrange nodes top-to-bottom in a single column, evenly spaced
+  // Auto-layout: for each connected chain, straighten nodes and equalize spacing.
+  // Disconnected (isolated) nodes are NOT moved.
   const handleAutoLayout = useCallback(async () => {
-    if (!dbNodes || dbNodes.length === 0) return;
-    const GAP_Y = 160;
-    const centerX = 300;
-    const updates = dbNodes.map((n, i) => ({ id: n.id, position: { x: centerX, y: 80 + i * GAP_Y } }));
+    if (!dbNodes || !dbEdges || dbNodes.length === 0) return;
+
+    const GAP = 160; // constant spacing between connected nodes
+
+    // Build adjacency sets (undirected, for component detection)
+    const neighbors = new Map<string, Set<string>>();
+    for (const n of dbNodes) neighbors.set(n.id, new Set());
+    for (const e of dbEdges) {
+      neighbors.get(e.source)?.add(e.target);
+      neighbors.get(e.target)?.add(e.source);
+    }
+
+    // BFS to find connected components
+    const visited = new Set<string>();
+    const components: string[][] = [];
+    for (const n of dbNodes) {
+      if (visited.has(n.id)) continue;
+      const component: string[] = [];
+      const queue = [n.id];
+      while (queue.length) {
+        const cur = queue.shift()!;
+        if (visited.has(cur)) continue;
+        visited.add(cur);
+        component.push(cur);
+        for (const nb of neighbors.get(cur) ?? []) {
+          if (!visited.has(nb)) queue.push(nb);
+        }
+      }
+      components.push(component);
+    }
+
+    // For each component with 2+ nodes: do a topological layout
+    const updates: { id: string; position: { x: number; y: number } }[] = [];
+
+    for (const component of components) {
+      if (component.length < 2) continue; // leave isolated nodes untouched
+
+      // Build directed edges within component
+      const compSet = new Set(component);
+      const inDegree = new Map<string, number>();
+      const children = new Map<string, string[]>();
+      for (const id of component) { inDegree.set(id, 0); children.set(id, []); }
+
+      for (const e of dbEdges) {
+        if (!compSet.has(e.source) || !compSet.has(e.target)) continue;
+        inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+        children.get(e.source)?.push(e.target);
+      }
+
+      // Find root(s): nodes with no incoming edges in this component
+      const roots = component.filter(id => (inDegree.get(id) ?? 0) === 0);
+      // If it's a cycle (no roots), pick the first node as root
+      const startNodes = roots.length > 0 ? roots : [component[0]];
+
+      // Find the anchor: the current position of the root to preserve location
+      const anchorNode = dbNodes.find(n => n.id === startNodes[0]);
+      const anchorX = anchorNode?.position.x ?? 200;
+      const anchorY = anchorNode?.position.y ?? 100;
+
+      // BFS traversal assigning positions level by level
+      const levelVisited = new Set<string>();
+      const posMap = new Map<string, { x: number; y: number }>();
+      const levelQueue: { id: string; level: number; col: number }[] = [];
+      let colCounters = new Map<number, number>();
+
+      for (const root of startNodes) {
+        const col = colCounters.get(0) ?? 0;
+        colCounters.set(0, col + 1);
+        levelQueue.push({ id: root, level: 0, col });
+        levelVisited.add(root);
+      }
+
+      while (levelQueue.length) {
+        const { id, level, col } = levelQueue.shift()!;
+        posMap.set(id, { x: anchorX + col * GAP * 1.5, y: anchorY + level * GAP });
+
+        const kids = children.get(id) ?? [];
+        for (const kid of kids) {
+          if (levelVisited.has(kid)) continue;
+          levelVisited.add(kid);
+          const kidCol = colCounters.get(level + 1) ?? col;
+          colCounters.set(level + 1, kidCol + 1);
+          levelQueue.push({ id: kid, level: level + 1, col: kidCol });
+        }
+      }
+
+      // Queue updates for nodes in this component
+      for (const [id, pos] of posMap) {
+        updates.push({ id, position: pos });
+      }
+    }
+
     for (const u of updates) {
       await db.flowchartNodes.update(u.id, { position: u.position });
     }
-    setTimeout(() => fitView({ duration: 400, padding: 0.2 }), 100);
-  }, [dbNodes, fitView]);
+    setTimeout(() => fitView({ duration: 400, padding: 0.25 }), 100);
+  }, [dbNodes, dbEdges, fitView]);
 
   return (
     <div style={{ display: 'flex', width: '100%', height: '100%' }}>
