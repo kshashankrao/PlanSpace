@@ -322,28 +322,24 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
       // BFS traversal assigning positions level by level
       const levelVisited = new Set<string>();
       const posMap = new Map<string, { x: number; y: number }>();
-      const levelQueue: { id: string; level: number; col: number }[] = [];
-      let colCounters = new Map<number, number>();
+      const levelQueue: { id: string; level: number; branchX: number }[] = [];
 
-      for (const root of startNodes) {
-        const col = colCounters.get(0) ?? 0;
-        colCounters.set(0, col + 1);
-        levelQueue.push({ id: root, level: 0, col });
-        levelVisited.add(root);
+      for (let ri = 0; ri < startNodes.length; ri++) {
+        levelQueue.push({ id: startNodes[ri], level: 0, branchX: anchorX + ri * GAP * 1.5 });
+        levelVisited.add(startNodes[ri]);
       }
 
       while (levelQueue.length) {
-        const { id, level, col } = levelQueue.shift()!;
-        posMap.set(id, { x: anchorX + col * GAP * 1.5, y: anchorY + level * GAP });
+        const { id, level, branchX } = levelQueue.shift()!;
+        posMap.set(id, { x: branchX, y: anchorY + level * GAP });
 
-        const kids = children.get(id) ?? [];
-        for (const kid of kids) {
-          if (levelVisited.has(kid)) continue;
+        const kids = (children.get(id) ?? []).filter(k => !levelVisited.has(k));
+        // All kids inherit the same X unless there are multiple (true branch)
+        kids.forEach((kid, i) => {
           levelVisited.add(kid);
-          const kidCol = colCounters.get(level + 1) ?? col;
-          colCounters.set(level + 1, kidCol + 1);
-          levelQueue.push({ id: kid, level: level + 1, col: kidCol });
-        }
+          const kidX = kids.length > 1 ? branchX + (i - (kids.length - 1) / 2) * GAP * 1.5 : branchX;
+          levelQueue.push({ id: kid, level: level + 1, branchX: kidX });
+        });
       }
 
       // Queue updates for nodes in this component
