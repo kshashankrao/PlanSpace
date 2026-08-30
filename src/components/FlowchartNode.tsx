@@ -6,7 +6,7 @@ import { db } from '../db/db';
 export default function FlowchartNode({ id, data }: NodeProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [label, setLabel] = useState((data.label as string) || '');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const shape = (data.shape as string) || 'rectangle';
 
@@ -17,16 +17,12 @@ export default function FlowchartNode({ id, data }: NodeProps) {
   }, [data.label, isEditing]);
 
   useEffect(() => {
-    if (data.isNew) {
-      setIsEditing(true);
-    }
+    if (data.isNew) setIsEditing(true);
   }, [data.isNew]);
 
   useEffect(() => {
     const handleEditStart = (e: any) => {
-      if (e.detail.id === id) {
-        setIsEditing(true);
-      }
+      if (e.detail.id === id) setIsEditing(true);
     };
     window.addEventListener('start-flowchart-node-edit', handleEditStart);
     return () => window.removeEventListener('start-flowchart-node-edit', handleEditStart);
@@ -36,6 +32,9 @@ export default function FlowchartNode({ id, data }: NodeProps) {
     if (isEditing && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
+      // trigger auto-grow on mount
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = inputRef.current.scrollHeight + 'px';
     }
   }, [isEditing]);
 
@@ -49,9 +48,92 @@ export default function FlowchartNode({ id, data }: NodeProps) {
     }
   };
 
+  // Shared text styles
+  const textStyle: React.CSSProperties = {
+    fontSize: '14px',
+    color: 'var(--n800)',
+    wordBreak: 'break-word',
+    overflowWrap: 'break-word',
+    whiteSpace: 'pre-wrap',
+    textAlign: 'center',
+    width: '100%',
+  };
 
+  const textareaStyle: React.CSSProperties = {
+    ...textStyle,
+    background: 'transparent',
+    border: 'none',
+    outline: 'none',
+    resize: 'none',
+    overflow: 'hidden',
+    fontFamily: 'inherit',
+    margin: 0,
+    padding: 0,
+    lineHeight: 1.4,
+  };
 
-  const getShapeStyle = (): React.CSSProperties => {
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setLabel(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = e.target.scrollHeight + 'px';
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveLabel(); }
+    else if (e.key === 'Escape') { setIsEditing(false); setLabel((data.label as string) || ''); }
+  };
+
+  // ── Diamond ─────────────────────────────────────────────────────────────────
+  // A fixed 100×100 square rotated 45° gives a proper diamond shape.
+  // Text is counter-rotated inside so it reads normally.
+  if (shape === 'diamond') {
+    const SIZE = 100;
+    return (
+      <div
+        style={{ position: 'relative', width: SIZE * 1.42, height: SIZE * 1.42, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        onDoubleClick={() => setIsEditing(true)}
+      >
+        {/* The rotated square */}
+        <div style={{
+          width: SIZE,
+          height: SIZE,
+          transform: 'rotate(45deg)',
+          backgroundColor: 'var(--n0)',
+          border: '2px solid var(--b400)',
+          borderRadius: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          {/* Counter-rotate so text is upright */}
+          <div style={{ transform: 'rotate(-45deg)', width: SIZE * 0.72, textAlign: 'center' }}>
+            {isEditing ? (
+              <textarea
+                ref={inputRef}
+                value={label}
+                rows={1}
+                onChange={handleTextareaChange}
+                onBlur={saveLabel}
+                onKeyDown={handleKeyDown}
+                style={{ ...textareaStyle, width: '100%' }}
+              />
+            ) : (
+              <div style={{ ...textStyle, width: '100%' }}>{label || 'Decision'}</div>
+            )}
+          </div>
+        </div>
+        <Handle type="target" position={Position.Top} id="top" />
+        <Handle type="source" position={Position.Right} id="right" />
+        <Handle type="source" position={Position.Bottom} id="bottom" />
+        <Handle type="target" position={Position.Left} id="left" />
+      </div>
+    );
+  }
+
+  // ── Other shapes (rectangle, oval, cylinder) ─────────────────────────────────
+  // All use a fixed 160px wide container so auto-layout centers them on the same X.
+  const shapeStyle: React.CSSProperties = (() => {
     const base: React.CSSProperties = {
       width: '100%',
       backgroundColor: 'var(--n0)',
@@ -61,16 +143,6 @@ export default function FlowchartNode({ id, data }: NodeProps) {
       justifyContent: 'center',
     };
     switch (shape) {
-      case 'diamond':
-        return {
-          // diamond is handled differently via SVG overlay — use rectangle base
-          ...base,
-          minHeight: 52,
-          padding: '10px 24px',
-          transform: 'rotate(45deg)',
-          borderRadius: '4px',
-          // must clip inner overflow for rotated box
-        };
       case 'oval':
         return { ...base, minHeight: 52, borderRadius: '999px', padding: '10px 24px' };
       case 'cylinder':
@@ -79,69 +151,28 @@ export default function FlowchartNode({ id, data }: NodeProps) {
       default:
         return { ...base, minHeight: 52, borderRadius: 'var(--radius)', padding: '10px 24px', boxShadow: 'var(--shadow-card)' };
     }
-  };
-
-  const textContent = (
-    <div style={{
-      fontSize: '14px',
-      color: 'var(--n800)',
-      wordBreak: 'break-word',
-      overflowWrap: 'break-word',
-      whiteSpace: 'pre-wrap',
-      width: '100%',
-      textAlign: 'center',
-      transform: shape === 'diamond' ? 'rotate(-45deg)' : 'none',
-    }}>
-      {label || 'Process'}
-    </div>
-  );
-
-  const editContent = (
-    <textarea
-      ref={inputRef as any}
-      value={label}
-      rows={1}
-      onChange={(e) => {
-        setLabel(e.target.value);
-        // auto-grow
-        e.target.style.height = 'auto';
-        e.target.style.height = e.target.scrollHeight + 'px';
-      }}
-      onBlur={saveLabel}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveLabel(); }
-        else if (e.key === 'Escape') { setIsEditing(false); setLabel((data.label as string) || ''); }
-      }}
-      style={{
-        width: '100%',
-        background: 'transparent',
-        border: 'none',
-        outline: 'none',
-        resize: 'none',
-        overflow: 'hidden',
-        textAlign: 'center',
-        color: 'var(--n800)',
-        fontSize: '14px',
-        fontFamily: 'inherit',
-        margin: 0,
-        padding: 0,
-        lineHeight: 1.4,
-        transform: shape === 'diamond' ? 'rotate(-45deg)' : 'none',
-        wordBreak: 'break-word',
-      }}
-    />
-  );
+  })();
 
   return (
-    // Fixed-width outer container — all shapes share the same reference X for auto-layout
     <div
       style={{ position: 'relative', width: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onDoubleClick={() => setIsEditing(true)}
     >
-      <div style={getShapeStyle()}>
-        {isEditing ? editContent : textContent}
+      <div style={shapeStyle}>
+        {isEditing ? (
+          <textarea
+            ref={inputRef}
+            value={label}
+            rows={1}
+            onChange={handleTextareaChange}
+            onBlur={saveLabel}
+            onKeyDown={handleKeyDown}
+            style={textareaStyle}
+          />
+        ) : (
+          <div style={textStyle}>{label || 'Process'}</div>
+        )}
       </div>
-
       <Handle type="target" position={Position.Top} id="top" />
       <Handle type="source" position={Position.Right} id="right" />
       <Handle type="source" position={Position.Bottom} id="bottom" />
