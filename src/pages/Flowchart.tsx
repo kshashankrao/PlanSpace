@@ -50,6 +50,9 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { screenToFlowPosition, fitView } = useReactFlow();
 
+  // Edge context menu state
+  const [edgeMenu, setEdgeMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
+
   const dbNodes = useLiveQuery(
     () => db.flowchartNodes.where('flowchartId').equals(flowchartId).toArray(),
     [flowchartId]
@@ -81,6 +84,7 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
         targetHandle: e.targetHandle ?? null,
         type: 'straight',
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
+        markerStart: (e as any).markerStart === 'arrow' ? { type: MarkerType.ArrowClosed, width: 14, height: 14 } : undefined,
         style: { stroke: 'var(--n500)', strokeWidth: 1.5 },
         label: e.label,
       })));
@@ -214,6 +218,45 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     await db.flowchartEdges.bulkDelete(deletedEdges.map(e => e.id));
   }, []);
 
+  // Edge right-click context menu
+  const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    setEdgeMenu({ edgeId: edge.id, x: event.clientX, y: event.clientY });
+  }, []);
+
+  const handleReverseEdge = useCallback(async () => {
+    if (!edgeMenu) return;
+    const dbEdge = dbEdges?.find(e => e.id === edgeMenu.edgeId);
+    if (!dbEdge) return;
+    await db.flowchartEdges.update(edgeMenu.edgeId, {
+      source: dbEdge.target,
+      target: dbEdge.source,
+      sourceHandle: dbEdge.targetHandle,
+      targetHandle: dbEdge.sourceHandle,
+    });
+    setEdgeMenu(null);
+  }, [edgeMenu, dbEdges]);
+
+  const handleDoubleArrow = useCallback(async () => {
+    if (!edgeMenu) return;
+    const dbEdge = dbEdges?.find(e => e.id === edgeMenu.edgeId);
+    if (!dbEdge) return;
+    // Toggle: if already has markerStart (double arrow), remove it; otherwise add it
+    const hasDouble = (dbEdge as any).markerStart !== undefined;
+    if (hasDouble) {
+      await db.flowchartEdges.update(edgeMenu.edgeId, { markerStart: undefined } as any);
+    } else {
+      await db.flowchartEdges.update(edgeMenu.edgeId, { markerStart: 'arrow' } as any);
+    }
+    setEdgeMenu(null);
+  }, [edgeMenu, dbEdges]);
+
+  const handleDeleteEdge = useCallback(async () => {
+    if (!edgeMenu) return;
+    await db.flowchartEdges.delete(edgeMenu.edgeId);
+    setEdgeMenu(null);
+  }, [edgeMenu]);
+
   // Auto-layout: arrange nodes top-to-bottom in a single column, evenly spaced
   const handleAutoLayout = useCallback(async () => {
     if (!dbNodes || dbNodes.length === 0) return;
@@ -260,11 +303,16 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
           onNodeDragStop={onNodeDragStop}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
+          onEdgeContextMenu={onEdgeContextMenu}
+          onPaneClick={() => setEdgeMenu(null)}
           nodeTypes={nodeTypes}
           defaultViewport={{ x: 0, y: 0, zoom: 0.45 }}
           fitView
           fitViewOptions={{ maxZoom: 0.55, padding: 0.3 }}
           deleteKeyCode={['Backspace', 'Delete']}
+          multiSelectionKeyCode={['Shift']}
+          selectionOnDrag
+          panOnDrag={[1, 2]}
           defaultEdgeOptions={{
             type: 'straight',
             markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
@@ -277,6 +325,57 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
           <Controls />
           <MiniMap zoomable pannable nodeColor="var(--b100)" maskColor="rgba(244,245,247,0.7)" />
         </ReactFlow>
+
+        {/* Edge context menu */}
+        {edgeMenu && (
+          <>
+            <div
+              style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}
+              onClick={() => setEdgeMenu(null)}
+              onContextMenu={e => { e.preventDefault(); setEdgeMenu(null); }}
+            />
+            <div style={{
+              position: 'fixed',
+              top: edgeMenu.y,
+              left: edgeMenu.x,
+              zIndex: 1000,
+              backgroundColor: 'var(--n0)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius)',
+              boxShadow: 'var(--shadow-dropdown)',
+              minWidth: '170px',
+              overflow: 'hidden',
+            }}>
+              <div style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Arrow Options</div>
+              <button
+                onClick={handleReverseEdge}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }}
+                onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')}
+                onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                ↩ Reverse Direction
+              </button>
+              <button
+                onClick={handleDoubleArrow}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }}
+                onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')}
+                onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                ↔ Toggle Double Arrow
+              </button>
+              <div style={{ borderTop: '1px solid var(--border-color)' }}>
+                <button
+                  onClick={handleDeleteEdge}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--r400)', fontSize: '14px', textAlign: 'left' }}
+                  onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')}
+                  onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  🗑 Delete Arrow
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
