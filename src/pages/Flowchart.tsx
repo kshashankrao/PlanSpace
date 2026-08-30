@@ -44,6 +44,19 @@ function getSmartHandles(
   }
 }
 
+// Approximate rendered height per shape (matches FlowchartNode.tsx container sizes)
+// Diamond: 100 * sqrt(2) ≈ 142px.  Others: minHeight 52 or 72.
+function getNodeHeight(shape: string): number {
+  switch (shape) {
+    case 'diamond': return 142;
+    case 'cylinder': return 72;
+    default: return 52; // rectangle, oval
+  }
+}
+
+// Vertical gap between bottom of one node and top of the next
+const NODE_MARGIN = 24;
+
 function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -135,8 +148,9 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
 
     if (dbNodes && dbNodes.length > 0) {
       const bottomMost = dbNodes.reduce((p, c) => p.position.y > c.position.y ? p : c);
+      const srcHeight = getNodeHeight(bottomMost.shape as string);
       targetX = bottomMost.position.x;
-      targetY = bottomMost.position.y + 80;
+      targetY = bottomMost.position.y + srcHeight + NODE_MARGIN;
       sourceNodeId = bottomMost.id;
     }
 
@@ -262,8 +276,6 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
   const handleAutoLayout = useCallback(async () => {
     if (!dbNodes || !dbEdges || dbNodes.length === 0) return;
 
-    const GAP = 80; // constant spacing between connected nodes
-
     // Build adjacency sets (undirected, for component detection)
     const neighbors = new Map<string, Set<string>>();
     for (const n of dbNodes) neighbors.set(n.id, new Set());
@@ -291,7 +303,8 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
       components.push(component);
     }
 
-    // For each component with 2+ nodes: do a topological layout
+    // For each component with 2+ nodes: topological BFS layout
+    // Gap = height of previous node + fixed margin between visual edges
     const updates: { id: string; position: { x: number; y: number } }[] = [];
 
     for (const component of components) {
@@ -320,26 +333,40 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
       const anchorX = anchorNode?.position.x ?? 200;
       const anchorY = anchorNode?.position.y ?? 100;
 
-      // BFS traversal assigning positions level by level
       const levelVisited = new Set<string>();
       const posMap = new Map<string, { x: number; y: number }>();
-      const levelQueue: { id: string; level: number; branchX: number }[] = [];
+      // queue items: the node to place, its branchX, and the Y-bottom of its parent
+      const levelQueue: { id: string; branchX: number; parentBottom: number }[] = [];
 
+      // Seed root nodes — place them at anchorY and compute their own bottoms
       for (let ri = 0; ri < startNodes.length; ri++) {
-        levelQueue.push({ id: startNodes[ri], level: 0, branchX: anchorX + ri * GAP * 1.5 });
-        levelVisited.add(startNodes[ri]);
+        const rootId = startNodes[ri];
+        const rootBranchX = anchorX + ri * 200;
+        const rootH = getNodeHeight((dbNodes.find(n => n.id === rootId)?.shape as string) ?? 'rectangle');
+        posMap.set(rootId, { x: rootBranchX, y: anchorY });
+        levelVisited.add(rootId);
+        const rootBottom = anchorY + rootH;
+        // Enqueue root's children
+        const kids = (children.get(rootId) ?? []).filter(k => !levelVisited.has(k));
+        kids.forEach((kid, i) => {
+          levelVisited.add(kid);
+          const kidX = kids.length > 1 ? rootBranchX + (i - (kids.length - 1) / 2) * 200 : rootBranchX;
+          levelQueue.push({ id: kid, branchX: kidX, parentBottom: rootBottom });
+        });
       }
 
       while (levelQueue.length) {
-        const { id, level, branchX } = levelQueue.shift()!;
-        posMap.set(id, { x: branchX, y: anchorY + level * GAP });
+        const { id, branchX, parentBottom } = levelQueue.shift()!;
+        const thisH = getNodeHeight((dbNodes.find(n => n.id === id)?.shape as string) ?? 'rectangle');
+        const y = parentBottom + NODE_MARGIN;
+        posMap.set(id, { x: branchX, y });
+        const myBottom = y + thisH;
 
         const kids = (children.get(id) ?? []).filter(k => !levelVisited.has(k));
-        // All kids inherit the same X unless there are multiple (true branch)
         kids.forEach((kid, i) => {
           levelVisited.add(kid);
-          const kidX = kids.length > 1 ? branchX + (i - (kids.length - 1) / 2) * GAP * 1.5 : branchX;
-          levelQueue.push({ id: kid, level: level + 1, branchX: kidX });
+          const kidX = kids.length > 1 ? branchX + (i - (kids.length - 1) / 2) * 200 : branchX;
+          levelQueue.push({ id: kid, branchX: kidX, parentBottom: myBottom });
         });
       }
 
