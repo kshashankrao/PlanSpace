@@ -90,7 +90,7 @@ export default function FlowchartNode({ id, data }: NodeProps) {
     const SIZE = 100;
     return (
       <div
-        style={{ position: 'relative', width: SIZE * 1.42, height: SIZE * 1.42, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        style={{ position: 'relative', width: 160, height: SIZE * 1.42, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         onDoubleClick={() => setIsEditing(true)}
       >
         {/* The rotated square */}

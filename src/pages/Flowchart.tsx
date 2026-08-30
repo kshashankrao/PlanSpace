@@ -136,7 +136,7 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     if (dbNodes && dbNodes.length > 0) {
       const bottomMost = dbNodes.reduce((p, c) => p.position.y > c.position.y ? p : c);
       targetX = bottomMost.position.x;
-      targetY = bottomMost.position.y + 160;
+      targetY = bottomMost.position.y + 80;
       sourceNodeId = bottomMost.id;
     }
 
@@ -165,7 +165,7 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     await db.flowchartNodes.update(node.id, { position: node.position });
 
     if (dbNodes) {
-      const SNAP_DIST = 160;
+      const SNAP_DIST = 100;
       let closest: typeof dbNodes[0] | null = null;
       let minDist = Infinity;
 
@@ -262,7 +262,7 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
   const handleAutoLayout = useCallback(async () => {
     if (!dbNodes || !dbEdges || dbNodes.length === 0) return;
 
-    const GAP = 160; // constant spacing between connected nodes
+    const GAP = 80; // constant spacing between connected nodes
 
     // Build adjacency sets (undirected, for component detection)
     const neighbors = new Map<string, Set<string>>();
@@ -314,7 +314,8 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
       // If it's a cycle (no roots), pick the first node as root
       const startNodes = roots.length > 0 ? roots : [component[0]];
 
-      // Find the anchor: the current position of the root to preserve location
+      // Anchor: use the root's current X, but normalize it to a clean center.
+      // We keep the root's Y so the chain doesn't jump vertically.
       const anchorNode = dbNodes.find(n => n.id === startNodes[0]);
       const anchorX = anchorNode?.position.x ?? 200;
       const anchorY = anchorNode?.position.y ?? 100;
