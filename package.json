@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "package": "electron-builder build --publish always"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -44,5 +45,20 @@
     "vite": "^8.2.2",
     "vite-plugin-electron": "^1.1.1",
     "vitest": "^4.1.11"
+  },
+  "build": {
+    "appId": "com.planspace.app",
+    "productName": "PlanSpace",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "publish": [
+      "github"
+    ]
   }
 }
