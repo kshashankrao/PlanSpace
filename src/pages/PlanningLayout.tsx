@@ -9,7 +9,7 @@ export default function PlanningLayout() {
           <div className="breadcrumb">Projects / PlanSpace</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
             <div style={{ width: '24px', height: '24px', backgroundColor: 'var(--prio-medium)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '10px' }}>PS</div>
-            <h1 style={{ fontSize: '24px', margin: 0, padding: 0 }}>Software project</h1>
+            <h1 style={{ fontSize: '24px', margin: 0, padding: 0 }}>Planning</h1>
           </div>
         </div>
 
