@@ -1,7 +1,7 @@
 {
   "name": "planspace",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
@@ -47,6 +47,10 @@
     "vite-plugin-electron": "^1.1.1",
     "vitest": "^4.1.11"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kshashankrao/PlanSpace.git"
+  },
   "build": {
     "appId": "com.planspace.app",
     "productName": "PlanSpace",
@@ -59,7 +63,10 @@
       ]
     },
     "publish": [
-      "github"
+      {
+        "provider": "github",
+        "releaseType": "release"
+      }
     ]
   }
 }
