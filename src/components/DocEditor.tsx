@@ -3,7 +3,8 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
-import { Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3, Image as ImageIcon, MoreVertical, CheckSquare, Share2 } from 'lucide-react';
+import { Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3, Image as ImageIcon, MoreVertical, CheckSquare, Share2, FileDown, FileText } from 'lucide-react';
+import html2pdf from 'html2pdf.js';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 
@@ -96,6 +97,37 @@ const MenuBar = ({ editor }: { editor: any }) => {
   const handleSelect = (id: string, title: string) => {
     const url = modalType === 'task' ? `#task-${id}` : `#mindmap-${id}`;
     editor.chain().focus().setLink({ href: url, target: '_self' }).insertContent(title).run();
+  };
+
+  const exportToPDF = () => {
+    const element = document.querySelector('.tiptap-container .ProseMirror') as HTMLElement;
+    if (element) {
+      const opt: any = {
+        margin:       0.5,
+        filename:     'document.pdf',
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2 },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+      html2pdf().set(opt).from(element).save();
+    }
+  };
+
+  const exportToWord = () => {
+    const element = document.querySelector('.tiptap-container .ProseMirror');
+    if (element) {
+      const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>";
+      const footer = "</body></html>";
+      const sourceHTML = header + element.innerHTML + footer;
+      
+      const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
+      const fileDownload = document.createElement("a");
+      document.body.appendChild(fileDownload);
+      fileDownload.href = source;
+      fileDownload.download = 'document.doc';
+      fileDownload.click();
+      document.body.removeChild(fileDownload);
+    }
   };
 
   if (!editor) return null;
@@ -231,6 +263,21 @@ const MenuBar = ({ editor }: { editor: any }) => {
               className="dropdown-item"
             >
               <Share2 size={16} /> Add reference to mind map
+            </button>
+            <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }} />
+            <button 
+              onClick={(e) => { e.stopPropagation(); exportToPDF(); setIsMenuOpen(false); }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              className="dropdown-item"
+            >
+              <FileDown size={16} /> Export to PDF
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); exportToWord(); setIsMenuOpen(false); }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              className="dropdown-item"
+            >
+              <FileText size={16} /> Export to Word
             </button>
           </div>
         )}

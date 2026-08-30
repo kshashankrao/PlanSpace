@@ -23,6 +23,7 @@
     "@xyflow/react": "^12.11.5",
     "dexie": "^4.4.5",
     "dexie-react-hooks": "^4.4.0",
+    "html2pdf.js": "^0.14.0",
     "lucide-react": "^1.37.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
