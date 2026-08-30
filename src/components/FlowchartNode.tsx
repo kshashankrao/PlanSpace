@@ -49,109 +49,97 @@ export default function FlowchartNode({ id, data }: NodeProps) {
     }
   };
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      saveLabel();
-    } else if (e.key === 'Escape') {
-      setIsEditing(false);
-      setLabel((data.label as string) || '');
-    }
-  };
 
-  const getShapeStyle = () => {
+
+  const getShapeStyle = (): React.CSSProperties => {
+    const base: React.CSSProperties = {
+      width: '100%',
+      backgroundColor: 'var(--n0)',
+      border: '2px solid var(--b400)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    };
     switch (shape) {
       case 'diamond':
         return {
-          width: 100,
-          height: 100,
+          // diamond is handled differently via SVG overlay — use rectangle base
+          ...base,
+          minHeight: 52,
+          padding: '10px 24px',
           transform: 'rotate(45deg)',
-          backgroundColor: 'var(--n0)',
-          border: '2px solid var(--b400)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '4px'
+          borderRadius: '4px',
+          // must clip inner overflow for rotated box
         };
       case 'oval':
-        return {
-          minWidth: 120,
-          minHeight: 60,
-          backgroundColor: 'var(--n0)',
-          border: '2px solid var(--b400)',
-          borderRadius: '999px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '12px 24px'
-        };
+        return { ...base, minHeight: 52, borderRadius: '999px', padding: '10px 24px' };
       case 'cylinder':
-        return {
-          minWidth: 100,
-          minHeight: 80,
-          backgroundColor: 'var(--n0)',
-          border: '2px solid var(--b400)',
-          borderRadius: '50% / 15%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '24px 16px'
-        };
+        return { ...base, minHeight: 72, borderRadius: '50% / 18%', padding: '20px 16px' };
       case 'rectangle':
       default:
-        return {
-          minWidth: 120,
-          minHeight: 60,
-          backgroundColor: 'var(--n0)',
-          border: '2px solid var(--b400)',
-          borderRadius: 'var(--radius)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '12px 24px',
-          boxShadow: 'var(--shadow-card)'
-        };
+        return { ...base, minHeight: 52, borderRadius: 'var(--radius)', padding: '10px 24px', boxShadow: 'var(--shadow-card)' };
     }
   };
 
+  const textContent = (
+    <div style={{
+      fontSize: '14px',
+      color: 'var(--n800)',
+      wordBreak: 'break-word',
+      overflowWrap: 'break-word',
+      whiteSpace: 'pre-wrap',
+      width: '100%',
+      textAlign: 'center',
+      transform: shape === 'diamond' ? 'rotate(-45deg)' : 'none',
+    }}>
+      {label || 'Process'}
+    </div>
+  );
+
+  const editContent = (
+    <textarea
+      ref={inputRef as any}
+      value={label}
+      rows={1}
+      onChange={(e) => {
+        setLabel(e.target.value);
+        // auto-grow
+        e.target.style.height = 'auto';
+        e.target.style.height = e.target.scrollHeight + 'px';
+      }}
+      onBlur={saveLabel}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveLabel(); }
+        else if (e.key === 'Escape') { setIsEditing(false); setLabel((data.label as string) || ''); }
+      }}
+      style={{
+        width: '100%',
+        background: 'transparent',
+        border: 'none',
+        outline: 'none',
+        resize: 'none',
+        overflow: 'hidden',
+        textAlign: 'center',
+        color: 'var(--n800)',
+        fontSize: '14px',
+        fontFamily: 'inherit',
+        margin: 0,
+        padding: 0,
+        lineHeight: 1.4,
+        transform: shape === 'diamond' ? 'rotate(-45deg)' : 'none',
+        wordBreak: 'break-word',
+      }}
+    />
+  );
+
   return (
-    <div 
-      style={{ position: 'relative' }}
+    // Fixed-width outer container — all shapes share the same reference X for auto-layout
+    <div
+      style={{ position: 'relative', width: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onDoubleClick={() => setIsEditing(true)}
     >
       <div style={getShapeStyle()}>
-        <div style={{
-          transform: shape === 'diamond' ? 'rotate(-45deg)' : 'none',
-          textAlign: 'center',
-          wordBreak: 'break-word',
-          maxWidth: shape === 'diamond' ? 80 : '100%',
-          width: '100%'
-        }}>
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              onBlur={saveLabel}
-              onKeyDown={onKeyDown}
-              style={{
-                width: '100%',
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                textAlign: 'center',
-                color: 'var(--n800)',
-                fontSize: '14px',
-                fontFamily: 'inherit',
-                margin: 0,
-                padding: 0
-              }}
-            />
-          ) : (
-            <div style={{ fontSize: '14px', color: 'var(--n800)' }}>
-              {label || 'Process'}
-            </div>
-          )}
-        </div>
+        {isEditing ? editContent : textContent}
       </div>
 
       <Handle type="target" position={Position.Top} id="top" />
