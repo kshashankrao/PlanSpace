@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -25,7 +25,7 @@ const nodeTypes = {
 function MindMapContent() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const { project, setViewport, fitView } = useReactFlow();
+  const { fitView } = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const focusNodeId = searchParams.get('node');
@@ -260,7 +260,7 @@ function MindMapContent() {
     return () => document.removeEventListener('keydown', handleKeyDown as any);
   }, [handleKeyDown]);
 
-  const activeMindMap = mindMaps?.find(m => m.id === activeMindMapId);
+  // const activeMindMap = mindMaps?.find(m => m.id === activeMindMapId);
 
   if (!mindMaps) return <div style={{ padding: '24px' }}>Loading...</div>;
 

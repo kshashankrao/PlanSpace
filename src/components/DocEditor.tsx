@@ -284,33 +284,34 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
         class: 'tiptap-editor',
         style: 'outline: none; min-height: 100%; font-size: 15px; line-height: 1.6; color: var(--text-primary);'
       },
+      handleClick(_view, _pos, event) {
+        const target = event.target as HTMLElement;
+        const a = target.closest('a');
+        if (a) {
+          const href = a.getAttribute('href');
+          if (href?.startsWith('#task-')) {
+            event.preventDefault();
+            const taskId = href.replace('#task-', '');
+            db.tasks.get(taskId).then(task => {
+              if (task) window.dispatchEvent(new CustomEvent('edit-task', { detail: task }));
+            });
+            return true;
+          } else if (href?.startsWith('#mindmap-')) {
+            event.preventDefault();
+            const mindmapId = href.replace('#mindmap-', '');
+            window.location.hash = `#/mindmap?map=${mindmapId}`;
+            return true;
+          }
+        }
+        return false;
+      }
     },
   });
-
-  const handleEditorClick = async (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    const a = target.closest('a');
-    if (a) {
-      const href = a.getAttribute('href');
-      if (href?.startsWith('#task-')) {
-        e.preventDefault();
-        const taskId = href.replace('#task-', '');
-        const task = await db.tasks.get(taskId);
-        if (task) {
-          window.dispatchEvent(new CustomEvent('edit-task', { detail: task }));
-        }
-      } else if (href?.startsWith('#mindmap-')) {
-        e.preventDefault();
-        const mindmapId = href.replace('#mindmap-', '');
-        window.location.hash = `#/mindmap?map=${mindmapId}`;
-      }
-    }
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', border: '1px solid var(--border-color)', borderRadius: 'var(--radius)', overflow: 'hidden', backgroundColor: 'var(--n0)', boxShadow: 'var(--shadow-card)' }}>
       <MenuBar editor={editor} />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '32px 40px' }} className="tiptap-container" onClick={handleEditorClick}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '32px 40px' }} className="tiptap-container">
         <EditorContent editor={editor} style={{ minHeight: '100%' }} />
       </div>
     </div>

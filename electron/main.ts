@@ -39,6 +39,14 @@ function createWindow() {
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'));
   }
+  
+  // Prevent any new windows from opening within Electron to avoid cache lock bugs and vulnerabilities
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http')) {
+      require('electron').shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 }
 
 app.on('window-all-closed', () => {

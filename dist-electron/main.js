@@ -1,6 +1,10 @@
+import { createRequire } from "node:module";
 import { BrowserWindow, app } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+//#region \0rolldown/runtime.js
+var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
+//#endregion
 //#region electron/main.ts
 var __dirname = path.dirname(fileURLToPath(import.meta.url));
 process.env.APP_ROOT = path.join(__dirname, "..");
@@ -28,6 +32,10 @@ function createWindow() {
 	});
 	if (VITE_DEV_SERVER_URL) win.loadURL(VITE_DEV_SERVER_URL);
 	else win.loadFile(path.join(RENDERER_DIST, "index.html"));
+	win.webContents.setWindowOpenHandler(({ url }) => {
+		if (url.startsWith("http")) __require("electron").shell.openExternal(url);
+		return { action: "deny" };
+	});
 }
 app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") {

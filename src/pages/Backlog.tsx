@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Task, Sprint } from '../db/db';
+import type { Task } from '../db/db';
 import CreateSprintModal from '../components/CreateSprintModal';
 import {
   DndContext,
@@ -164,13 +164,12 @@ export default function Backlog() {
     if (activeTask && activeTask.sprintId !== newSprintId) {
       // we store sprintId as string | undefined, but dexie uses undefined for missing props
       // to remove sprintId we can just update it to undefined or delete it.
-      await db.tasks.update(activeId, { sprintId: newSprintId });
+      await db.tasks.update(activeId as string, { sprintId: newSprintId });
     }
   };
 
   const activeSprint = sprints.find(s => s.status === 'active');
   const plannedSprints = sprints.filter(s => s.status === 'planned');
-  const completedSprints = sprints.filter(s => s.status === 'completed').sort((a, b) => b.createdAt - a.createdAt);
   const backlogTasks = tasks.filter(t => !t.sprintId);
 
   return (

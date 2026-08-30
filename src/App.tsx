@@ -9,8 +9,7 @@ import TaskModal from './components/TaskModal';
 import PlanningLayout from './pages/PlanningLayout';
 import SprintDetails from './pages/SprintDetails';
 import GanttChart from './pages/GanttChart';
-import type { Task, Sprint, TaskComment } from './db/db';
-import { db } from './db/db';
+import type { Task } from './db/db';
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   return (
@@ -30,7 +29,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
       </div>
 
       <nav style={{ flex: 1 }}>
-        <NavLink to="/planning/board" className={({ isActive }) => `nav-link ${window.location.hash.includes('#/planning') ? 'active' : ''}`} title="Planning">
+        <NavLink to="/planning/board" className={() => `nav-link ${window.location.hash.includes('#/planning') ? 'active' : ''}`} title="Planning">
           <LayoutDashboard size={18} />
           <span className="sidebar-text">Planning</span>
         </NavLink>
@@ -60,7 +59,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   useEffect(() => {
     const handleEditTask = (e: any) => {
