@@ -63,6 +63,32 @@ export interface MindMapEdgeData {
   mindMapId?: string; // To support multiple mind maps
 }
 
+export interface Flowchart {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FlowchartNodeData {
+  id: string;
+  flowchartId: string;
+  taskId?: string; // Optional link to a task
+  label: string;
+  shape: 'rectangle' | 'diamond' | 'oval' | 'cylinder';
+  position: { x: number; y: number };
+}
+
+export interface FlowchartEdgeData {
+  id: string;
+  flowchartId: string;
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+  label?: string;
+}
+
 export interface TaskComment {
   id: string;
   taskId: string;
@@ -80,6 +106,9 @@ const db = new Dexie('TaskAppDatabase') as Dexie & {
   mindMapEdges: EntityTable<MindMapEdgeData, 'id'>;
   taskComments: EntityTable<TaskComment, 'id'>;
   docs: EntityTable<Doc, 'id'>;
+  flowcharts: EntityTable<Flowchart, 'id'>;
+  flowchartNodes: EntityTable<FlowchartNodeData, 'id'>;
+  flowchartEdges: EntityTable<FlowchartEdgeData, 'id'>;
 };
 
 db.version(1).stores({
@@ -134,6 +163,20 @@ db.version(6).stores({
     await tx.table('mindMapNodes').toCollection().modify({ mindMapId: defaultMindMapId });
     await tx.table('mindMapEdges').toCollection().modify({ mindMapId: defaultMindMapId });
   }
+});
+
+db.version(7).stores({
+  tasks: 'id, statusId, priority, dueDate, createdAt, mindmapNodeId, order, sprintId',
+  statuses: 'id, order',
+  sprints: 'id, status',
+  mindMaps: 'id, createdAt, updatedAt',
+  mindMapNodes: 'id, taskId, mindMapId',
+  mindMapEdges: 'id, source, target, mindMapId',
+  taskComments: 'id, taskId, createdAt',
+  docs: 'id, parentId, createdAt, updatedAt',
+  flowcharts: 'id, createdAt, updatedAt',
+  flowchartNodes: 'id, flowchartId, taskId',
+  flowchartEdges: 'id, flowchartId, source, target'
 });
 
 // Populate default statuses on initial load

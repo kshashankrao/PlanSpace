@@ -1,5 +1,5 @@
 import { HashRouter as Router, Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Network, Settings, BookOpen, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, Network, Settings, BookOpen, PanelLeftClose, PanelLeftOpen, Workflow } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import KanbanBoard from './pages/KanbanBoard';
 import MindMap from './pages/MindMap';
@@ -9,6 +9,7 @@ import TaskModal from './components/TaskModal';
 import PlanningLayout from './pages/PlanningLayout';
 import SprintDetails from './pages/SprintDetails';
 import GanttChart from './pages/GanttChart';
+import Flowchart from './pages/Flowchart';
 import type { Task } from './db/db';
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -41,6 +42,10 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
         <NavLink to="/docs" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Docs">
           <BookOpen size={18} />
           <span className="sidebar-text">Docs</span>
+        </NavLink>
+        <NavLink to="/flowchart" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Flowchart">
+          <Workflow size={18} />
+          <span className="sidebar-text">Flowchart</span>
         </NavLink>
       </nav>
 
@@ -91,6 +96,7 @@ function App() {
               </Route>
               <Route path="/mindmap" element={<MindMap />} />
               <Route path="/docs" element={<Docs />} />
+              <Route path="/flowchart" element={<Flowchart />} />
               <Route path="/calendar" element={<div>Calendar View (Coming Soon)</div>} />
             </Routes>
           </div>
