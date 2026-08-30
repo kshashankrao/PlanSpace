@@ -21,9 +21,9 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 
       <div style={{ padding: '8px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '32px', height: '32px', minWidth: '32px', backgroundColor: 'var(--prio-medium)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>TM</div>
+          <div style={{ width: '32px', height: '32px', minWidth: '32px', backgroundColor: 'var(--prio-medium)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>PS</div>
           <div className="sidebar-text">
-            <h2 style={{ fontSize: '14px', margin: 0, color: 'var(--text-primary)', padding: 0 }}>Task Manager</h2>
+            <h2 style={{ fontSize: '14px', margin: 0, color: 'var(--text-primary)', padding: 0 }}>PlanSpace</h2>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Software project</div>
           </div>
         </div>

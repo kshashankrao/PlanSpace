@@ -6,9 +6,9 @@ export default function PlanningLayout() {
       {/* Header Section */}
       <div style={{ padding: '32px 40px 0 40px', backgroundColor: 'var(--n0)', borderBottom: '1px solid var(--border-color)' }}>
         <div style={{ marginBottom: '24px' }}>
-          <div className="breadcrumb">Projects / Task Manager</div>
+          <div className="breadcrumb">Projects / PlanSpace</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
-            <div style={{ width: '24px', height: '24px', backgroundColor: 'var(--prio-medium)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '10px' }}>TM</div>
+            <div style={{ width: '24px', height: '24px', backgroundColor: 'var(--prio-medium)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '10px' }}>PS</div>
             <h1 style={{ fontSize: '24px', margin: 0, padding: 0 }}>Software project</h1>
           </div>
         </div>
