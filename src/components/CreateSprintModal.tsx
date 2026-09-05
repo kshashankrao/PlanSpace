@@ -11,6 +11,7 @@ interface CreateSprintModalProps {
 export default function CreateSprintModal({ defaultName, onClose, onSuccess }: CreateSprintModalProps) {
   const [name, setName] = useState(defaultName);
   const [duration, setDuration] = useState('14'); // default 2 weeks
+  const [goal, setGoal] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,6 +20,7 @@ export default function CreateSprintModal({ defaultName, onClose, onSuccess }: C
     await db.sprints.add({
       id: crypto.randomUUID(),
       name,
+      goal: goal.trim() || undefined,
       durationDays: duration ? parseInt(duration) : undefined,
       status: 'planned',
       createdAt: Date.now()
@@ -29,18 +31,18 @@ export default function CreateSprintModal({ defaultName, onClose, onSuccess }: C
   };
 
   return (
-    <div style={{
+    <div className="modal-backdrop" style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)',
+      backgroundColor: 'rgba(9, 30, 66, 0.54)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-content" style={{
         backgroundColor: 'var(--n0)',
-        padding: '24px',
+        padding: '32px',
         borderRadius: 'var(--radius)',
         width: '400px',
         maxWidth: '90%',
@@ -63,6 +65,16 @@ export default function CreateSprintModal({ defaultName, onClose, onSuccess }: C
               autoFocus
               style={{ width: '100%', padding: '8px' }}
               placeholder="e.g. Sprint 1"
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', marginBottom: '4px', fontWeight: 500, fontSize: '12px', color: 'var(--text-secondary)' }}>Sprint Goal (Optional)</label>
+            <textarea 
+              value={goal} 
+              onChange={e => setGoal(e.target.value)}
+              style={{ width: '100%', padding: '8px', minHeight: '60px', fontFamily: 'inherit' }}
+              placeholder="What do we want to achieve?"
             />
           </div>
 

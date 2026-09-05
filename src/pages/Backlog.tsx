@@ -64,7 +64,7 @@ function BacklogTaskRow({ task }: { task: Task }) {
 }
 
 // A generic drop zone list for a Sprint or Backlog
-function TaskList({ id, title, tasks, onStartSprint }: { id: string, title: string, tasks: Task[], onStartSprint?: () => void }) {
+function TaskList({ id, title, goal, tasks, onStartSprint }: { id: string, title: string, goal?: string, tasks: Task[], onStartSprint?: () => void }) {
   const { setNodeRef } = useDroppable({
     id: id,
     data: { type: 'List', id }
@@ -72,15 +72,19 @@ function TaskList({ id, title, tasks, onStartSprint }: { id: string, title: stri
 
   return (
     <div ref={setNodeRef} style={{ marginBottom: '24px', backgroundColor: 'var(--n10)', padding: '16px', borderRadius: '4px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: goal ? '8px' : '16px' }}>
         <h3 style={{ margin: 0, textTransform: 'none', color: 'var(--n800)', fontSize: '16px' }}>
           {title} <span style={{ color: 'var(--n100)', fontSize: '14px', marginLeft: '8px' }}>({tasks.length} issues)</span>
         </h3>
         {onStartSprint && tasks.length > 0 && (
           <button onClick={onStartSprint} className="btn btn-secondary">Start sprint</button>
         )}
-        {/* We pass an explicit boolean for active sprint to show complete button */}
       </div>
+      {goal && (
+        <div style={{ fontSize: '13px', color: 'var(--n500)', marginBottom: '16px', fontStyle: 'italic' }}>
+          🎯 Goal: {goal}
+        </div>
+      )}
       <div style={{ minHeight: '40px' }}>
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map(task => (
@@ -182,6 +186,7 @@ export default function Backlog() {
             <TaskList 
               id={activeSprint.id} 
               title={`${activeSprint.name} (Active)`} 
+              goal={activeSprint.goal}
               tasks={tasks.filter(t => t.sprintId === activeSprint.id)} 
             />
             <div style={{ position: 'absolute', top: '12px', right: '16px' }}>
@@ -196,6 +201,7 @@ export default function Backlog() {
             key={sprint.id}
             id={sprint.id} 
             title={sprint.name} 
+            goal={sprint.goal}
             tasks={tasks.filter(t => t.sprintId === sprint.id)} 
             onStartSprint={() => handleStartSprint(sprint.id)}
           />

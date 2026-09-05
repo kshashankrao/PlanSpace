@@ -1,15 +1,20 @@
-import { createRequire as e } from "node:module";
-import { BrowserWindow as t, app as n } from "electron";
-import r from "node:path";
-import { fileURLToPath as i } from "node:url";
+import { createRequire } from "node:module";
+import { BrowserWindow, app } from "electron";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 //#region \0rolldown/runtime.js
-var a = /* @__PURE__ */ e(import.meta.url), o = r.dirname(i(import.meta.url));
-process.env.APP_ROOT = r.join(o, "..");
-var s = process.env.VITE_DEV_SERVER_URL, c = r.join(process.env.APP_ROOT, "dist-electron"), l = r.join(process.env.APP_ROOT, "dist");
-process.env.VITE_PUBLIC = s ? r.join(process.env.APP_ROOT, "public") : l;
-var u;
-function d() {
-	u = new t({
+var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
+//#endregion
+//#region electron/main.ts
+var __dirname = path.dirname(fileURLToPath(import.meta.url));
+process.env.APP_ROOT = path.join(__dirname, "..");
+var VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+var MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
+var RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
+process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
+var win;
+function createWindow() {
+	win = new BrowserWindow({
 		width: 1200,
 		height: 800,
 		minWidth: 800,
@@ -20,16 +25,27 @@ function d() {
 			symbolColor: "#000000"
 		},
 		webPreferences: {
-			preload: r.join(o, "preload.mjs"),
-			nodeIntegration: !1,
-			contextIsolation: !0
+			preload: path.join(__dirname, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true
 		}
-	}), s ? u.loadURL(s) : u.loadFile(r.join(l, "index.html")), u.webContents.setWindowOpenHandler(({ url: e }) => (e.startsWith("http") && a("electron").shell.openExternal(e), { action: "deny" }));
+	});
+	if (VITE_DEV_SERVER_URL) win.loadURL(VITE_DEV_SERVER_URL);
+	else win.loadFile(path.join(RENDERER_DIST, "index.html"));
+	win.webContents.setWindowOpenHandler(({ url }) => {
+		if (url.startsWith("http")) __require("electron").shell.openExternal(url);
+		return { action: "deny" };
+	});
 }
-n.on("window-all-closed", () => {
-	process.platform !== "darwin" && (n.quit(), u = null);
-}), n.on("activate", () => {
-	t.getAllWindows().length === 0 && d();
-}), n.whenReady().then(d);
+app.on("window-all-closed", () => {
+	if (process.platform !== "darwin") {
+		app.quit();
+		win = null;
+	}
+});
+app.on("activate", () => {
+	if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+app.whenReady().then(createWindow);
 //#endregion
-export { c as MAIN_DIST, l as RENDERER_DIST, s as VITE_DEV_SERVER_URL };
+export { MAIN_DIST, RENDERER_DIST, VITE_DEV_SERVER_URL };

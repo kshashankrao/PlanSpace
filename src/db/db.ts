@@ -19,6 +19,7 @@ export interface Task {
 export interface Sprint {
   id: string;
   name: string;
+  goal?: string; // Optional sprint goal
   durationDays?: number; // duration in days
   startDate?: number;
   endDate?: number;

@@ -12,8 +12,9 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import React from 'react';
 
-function SortableTaskItem({ task }: { task: Task }) {
+const SortableTaskItem = React.memo(function SortableTaskItem({ task }: { task: Task }) {
   const {
     attributes,
     listeners,
@@ -26,7 +27,10 @@ function SortableTaskItem({ task }: { task: Task }) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.7 : 1,
+    scale: isDragging ? 1.02 : 1,
+    boxShadow: isDragging ? 'var(--shadow-dropdown)' : undefined,
+    zIndex: isDragging ? 10 : 1,
   };
 
   return (
@@ -48,9 +52,9 @@ function SortableTaskItem({ task }: { task: Task }) {
       </div>
     </div>
   );
-}
+});
 
-function KanbanColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
+const KanbanColumn = React.memo(function KanbanColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
   const { setNodeRef } = useDroppable({
     id: status.id,
     data: { type: 'Column', status }
@@ -73,7 +77,16 @@ function KanbanColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  if (prevProps.status.id !== nextProps.status.id) return false;
+  if (prevProps.tasks.length !== nextProps.tasks.length) return false;
+  for (let i = 0; i < prevProps.tasks.length; i++) {
+    if (prevProps.tasks[i].id !== nextProps.tasks[i].id) return false;
+    if (prevProps.tasks[i].updatedAt !== nextProps.tasks[i].updatedAt) return false;
+    if (prevProps.tasks[i].statusId !== nextProps.tasks[i].statusId) return false;
+  }
+  return true;
+});
 
 export default function KanbanBoard() {
   const statuses = useLiveQuery(() => db.statuses.orderBy('order').toArray());
@@ -148,13 +161,16 @@ export default function KanbanBoard() {
           </div>
           <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
             <div className="kanban-board">
-              {statuses?.map((status) => (
-                <KanbanColumn
-                  key={status.id}
-                  status={status}
-                  tasks={(tasks || []).filter((t) => t.statusId === status.id)}
-                />
-              ))}
+              {statuses?.map((status) => {
+                const columnTasks = (tasks || []).filter((t) => t.statusId === status.id);
+                return (
+                  <KanbanColumn
+                    key={status.id}
+                    status={status}
+                    tasks={columnTasks}
+                  />
+                );
+              })}
             </div>
           </DndContext>
         </div>

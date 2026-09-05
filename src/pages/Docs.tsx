@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import DocEditor from '../components/DocEditor';
-import { FileText, Plus, Trash2, ChevronDown, ChevronRight, MoreVertical, Edit2 } from 'lucide-react';
+import { FileText, Plus, Trash2, ChevronDown, ChevronRight, MoreVertical, Edit2, ChevronLeft } from 'lucide-react';
 import type { Doc } from '../db/db';
 
 const DocTreeNode = ({ 
@@ -186,6 +186,7 @@ export default function Docs() {
   const docs = useLiveQuery(() => db.docs.orderBy('createdAt').reverse().toArray());
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Handle global F2 shortcut
   useEffect(() => {
@@ -240,10 +241,19 @@ export default function Docs() {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100%', backgroundColor: 'var(--bg-board)' }}>
+    <div style={{ display: 'flex', height: '100%', backgroundColor: 'var(--bg-board)', position: 'relative' }}>
       {/* Sidebar */}
-      <div style={{ width: '280px', backgroundColor: 'var(--n0)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '24px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ 
+        width: isSidebarCollapsed ? '0px' : '280px', 
+        minWidth: isSidebarCollapsed ? '0px' : '280px',
+        backgroundColor: 'var(--n0)', 
+        borderRight: isSidebarCollapsed ? 'none' : '1px solid var(--border-color)', 
+        display: 'flex', 
+        flexDirection: 'column',
+        transition: 'width 0.2s ease, min-width 0.2s ease',
+        overflow: 'hidden'
+      }}>
+        <div style={{ padding: '24px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: '280px' }}>
           <h2 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <FileText size={20} color="var(--prio-medium)" /> Docs
           </h2>
@@ -251,7 +261,7 @@ export default function Docs() {
             <Plus size={18} />
           </button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 8px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 8px', minWidth: '280px' }}>
           {(docs?.filter(d => !d.parentId) || []).map(doc => (
             <DocTreeNode 
               key={doc.id}
@@ -273,6 +283,32 @@ export default function Docs() {
           )}
         </div>
       </div>
+
+      {/* Sidebar Toggle Button */}
+      <button 
+        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        className="btn btn-ghost"
+        style={{
+          position: 'absolute',
+          top: '24px',
+          left: isSidebarCollapsed ? '16px' : '268px',
+          zIndex: 100,
+          width: '24px',
+          height: '24px',
+          padding: 0,
+          borderRadius: '50%',
+          backgroundColor: 'var(--n0)',
+          border: '1px solid var(--border-color)',
+          boxShadow: 'var(--shadow-card)',
+          transition: 'left 0.2s ease',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+        title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+      </button>
 
       {/* Editor Area */}
       <div style={{ flex: 1, padding: '32px 40px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>

@@ -10,9 +10,10 @@ import PlanningLayout from './pages/PlanningLayout';
 import SprintDetails from './pages/SprintDetails';
 import GanttChart from './pages/GanttChart';
 import Flowchart from './pages/Flowchart';
+import DataManagementModal from './components/DataManagementModal';
 import type { Task } from './db/db';
 
-function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+function Sidebar({ collapsed, onToggle, onOpenSettings }: { collapsed: boolean; onToggle: () => void; onOpenSettings: () => void }) {
   return (
     <div className={`sidebar ${collapsed ? 'collapsed' : ''}`} style={{ position: 'relative' }}>
       <button className="sidebar-toggle-btn" onClick={onToggle}>
@@ -50,9 +51,9 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
       </nav>
 
       <div style={{ marginTop: 'auto' }}>
-        <button className="btn btn-ghost nav-link" style={{ width: '100%', justifyContent: 'flex-start' }} title="Settings">
+        <button onClick={onOpenSettings} className="btn btn-ghost nav-link" style={{ width: '100%', justifyContent: 'flex-start' }} title="Settings">
           <Settings size={18} />
-          <span className="sidebar-text">Settings</span>
+          <span className="sidebar-text">Data Backup</span>
         </button>
       </div>
     </div>
@@ -63,6 +64,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
@@ -82,7 +84,7 @@ function App() {
       <div className="app-container" style={{ position: 'relative' }}>
         {/* Invisible drag region across the top to allow window dragging */}
         <div className="titlebar-drag-region" />
-        <Sidebar collapsed={isSidebarCollapsed} onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} />
+        <Sidebar collapsed={isSidebarCollapsed} onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onOpenSettings={() => setIsSettingsOpen(true)} />
         <div className="main-content">
           <div className="content-area">
             <Routes>
@@ -103,6 +105,7 @@ function App() {
         </div>
       </div>
       {isModalOpen && <TaskModal taskToEdit={editingTask} onClose={() => setIsModalOpen(false)} />}
+      {isSettingsOpen && <DataManagementModal onClose={() => setIsSettingsOpen(false)} />}
     </Router>
   );
 }

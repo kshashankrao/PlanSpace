@@ -317,7 +317,7 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
-          style: 'color: var(--b500); text-decoration: underline; cursor: pointer;',
+          class: 'smart-reference',
           target: '_self',
         }
       })
@@ -358,8 +358,12 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', border: '1px solid var(--border-color)', borderRadius: 'var(--radius)', overflow: 'hidden', backgroundColor: 'var(--n0)', boxShadow: 'var(--shadow-card)' }}>
       <MenuBar editor={editor} />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '32px 40px' }} className="tiptap-container">
-        <EditorContent editor={editor} style={{ minHeight: '100%' }} />
+      <div 
+        style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', cursor: 'text' }} 
+        className="tiptap-container"
+        onClick={() => editor?.commands.focus()}
+      >
+        <EditorContent editor={editor} />
       </div>
     </div>
   );

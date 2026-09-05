@@ -130,7 +130,7 @@ export default function TaskModal({ taskToEdit, onClose }: TaskModalProps) {
   };
 
   return (
-    <div style={{
+    <div className="modal-backdrop" style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
       backgroundColor: 'rgba(9, 30, 66, 0.54)', // Jira style modal backdrop
@@ -139,7 +139,7 @@ export default function TaskModal({ taskToEdit, onClose }: TaskModalProps) {
       justifyContent: 'center',
       zIndex: 1000,
     }}>
-      <div style={{
+      <div className="modal-content" style={{
         backgroundColor: 'var(--n0)',
         borderRadius: '3px',
         width: '1040px',

@@ -16,7 +16,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import MindMapNode from '../components/MindMapNode';
 import CreateMindMapModal from '../components/CreateMindMapModal';
-import { MoreHorizontal, Keyboard, X, Trash2, Edit2 } from 'lucide-react';
+import { MoreHorizontal, Keyboard, X, Trash2, Edit2, Download } from 'lucide-react';
+import { toPng } from 'html-to-image';
 
 const nodeTypes = {
   custom: MindMapNode,
@@ -29,6 +30,20 @@ function MindMapContent() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const focusNodeId = searchParams.get('node');
+  
+  const mindMaps = useLiveQuery(() => db.mindMaps.orderBy('createdAt').reverse().toArray());
+  const [activeMindMapId, setActiveMindMapId] = useState<string | null>(null);
+
+  const handleDownloadImage = useCallback(() => {
+    if (!reactFlowWrapper.current) return;
+    toPng(reactFlowWrapper.current, { backgroundColor: 'var(--bg-board)' })
+      .then((dataUrl) => {
+        const link = document.createElement('a');
+        link.download = `mindmap-${activeMindMapId}.png`;
+        link.href = dataUrl;
+        link.click();
+      });
+  }, [activeMindMapId]);
 
   const [activeView, setActiveView] = useState<'canvas' | 'list'>('canvas');
   const [isCreatingMindMap, setIsCreatingMindMap] = useState(false);
@@ -36,9 +51,6 @@ function MindMapContent() {
   const [showControls, setShowControls] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
-
-  const mindMaps = useLiveQuery(() => db.mindMaps.orderBy('createdAt').reverse().toArray());
-  const [activeMindMapId, setActiveMindMapId] = useState<string | null>(null);
 
   const mapParam = searchParams.get('map');
 
@@ -320,6 +332,16 @@ function MindMapContent() {
                   >
                     <Keyboard size={16} color="var(--text-secondary)" /> Controls
                   </button>
+                  {activeView === 'canvas' && (
+                    <button 
+                      onClick={() => { setShowMenu(false); handleDownloadImage(); }}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--n30)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <Download size={16} color="var(--text-secondary)" /> Export PNG
+                    </button>
+                  )}
                 </div>
               </>
             )}

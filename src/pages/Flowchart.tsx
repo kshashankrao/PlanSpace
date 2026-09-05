@@ -19,7 +19,8 @@ import { db } from '../db/db';
 import FlowchartNode from '../components/FlowchartNode';
 import FlowchartSidebar from '../components/FlowchartSidebar';
 import CreateFlowchartModal from '../components/CreateFlowchartModal';
-import { MoreHorizontal, Trash2, Edit2, AlignCenter } from 'lucide-react';
+import { MoreHorizontal, Trash2, Edit2, AlignCenter, Download } from 'lucide-react';
+import { toPng } from 'html-to-image';
 
 const nodeTypes = { custom: FlowchartNode };
 
@@ -62,6 +63,23 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { screenToFlowPosition, fitView } = useReactFlow();
+
+  const handleDownloadImage = useCallback(() => {
+    if (!reactFlowWrapper.current) return;
+    toPng(reactFlowWrapper.current, { backgroundColor: 'var(--bg-board)' })
+      .then((dataUrl) => {
+        const link = document.createElement('a');
+        link.download = `flowchart-${flowchartId}.png`;
+        link.href = dataUrl;
+        link.click();
+      });
+  }, [flowchartId]);
+
+  useEffect(() => {
+    const handler = () => handleDownloadImage();
+    window.addEventListener('export-flowchart-png', handler);
+    return () => window.removeEventListener('export-flowchart-png', handler);
+  }, [handleDownloadImage]);
 
   // Edge context menu state
   const [edgeMenu, setEdgeMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
@@ -386,7 +404,6 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     <div style={{ display: 'flex', width: '100%', height: '100%' }}>
       <FlowchartSidebar onDoubleClickShape={handleDoubleClickShape} />
       <div style={{ flex: 1, position: 'relative' }} ref={reactFlowWrapper}>
-        {/* Auto-layout button */}
         <button
           onClick={handleAutoLayout}
           title="Auto-align nodes vertically"
@@ -500,6 +517,7 @@ export default function Flowchart() {
   const [isCreating, setIsCreating] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
 
   const flowcharts = useLiveQuery(() => db.flowcharts.orderBy('createdAt').reverse().toArray());
 
@@ -560,6 +578,35 @@ export default function Flowchart() {
           >
             All Flowcharts
           </button>
+
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setShowMenu(!showMenu)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n400)', display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px' }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--n30)'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <MoreHorizontal size={20} />
+            </button>
+            
+            {showMenu && (
+              <>
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 90 }} onClick={() => setShowMenu(false)} />
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '4px', backgroundColor: 'var(--n0)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-dropdown)', zIndex: 100, minWidth: '150px', overflow: 'hidden' }}>
+                  {activeView === 'canvas' && (
+                    <button 
+                      onClick={() => { setShowMenu(false); window.dispatchEvent(new CustomEvent('export-flowchart-png')); }}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--n30)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <Download size={16} color="var(--text-secondary)" /> Export PNG
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
