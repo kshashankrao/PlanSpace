@@ -7,6 +7,8 @@ import { Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Hea
 import html2pdf from 'html2pdf.js';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
+import { MathExtension } from '@aarkue/tiptap-math-extension';
+import 'katex/dist/katex.min.css';
 
 interface DocEditorProps {
   initialContent: string;
@@ -310,6 +312,7 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
   const editor = useEditor({
     extensions: [
       StarterKit,
+      MathExtension.configure({ evaluation: true }),
       Image.configure({
         inline: true,
         allowBase64: true,
@@ -362,6 +365,13 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
         style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', cursor: 'text' }} 
         className="tiptap-container"
         onClick={() => editor?.commands.focus()}
+        onKeyDown={(e) => {
+          if (e.ctrlKey && !e.shiftKey && !e.altKey) {
+            if (e.key === '1') { e.preventDefault(); editor?.commands.toggleHeading({ level: 1 }); }
+            else if (e.key === '2') { e.preventDefault(); editor?.commands.toggleHeading({ level: 2 }); }
+            else if (e.key === '3') { e.preventDefault(); editor?.commands.toggleHeading({ level: 3 }); }
+          }
+        }}
       >
         <EditorContent editor={editor} />
       </div>

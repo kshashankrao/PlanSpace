@@ -1,7 +1,7 @@
 {
   "name": "planspace",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.0.3",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
     "package": "electron-builder build --publish always"
   },
   "dependencies": {
+    "@aarkue/tiptap-math-extension": "^1.4.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -26,6 +27,7 @@
     "dexie-react-hooks": "^4.4.0",
     "html-to-image": "^1.11.13",
     "html2pdf.js": "^0.14.0",
+    "katex": "^0.18.7",
     "lucide-react": "^1.37.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
