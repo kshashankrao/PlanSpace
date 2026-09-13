@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
@@ -14,6 +15,60 @@ interface DocEditorProps {
   initialContent: string;
   onUpdate: (content: string) => void;
 }
+
+const SmartTabExtension = Extension.create({
+  name: 'smartTab',
+  addKeyboardShortcuts() {
+    return {
+      'Tab': () => {
+        if (this.editor.isActive('orderedList')) {
+           const canSink = this.editor.can().sinkListItem('listItem');
+           if (canSink) {
+             const state = this.editor.state;
+             const { $from } = state.selection;
+             let prevItemHasList = false;
+             
+             try {
+               let listItemDepth = -1;
+               for (let d = $from.depth; d > 0; d--) {
+                 if ($from.node(d).type.name === 'listItem') {
+                   listItemDepth = d;
+                   break;
+                 }
+               }
+               
+               if (listItemDepth > 0) {
+                 const listDepth = listItemDepth - 1;
+                 const listNode = $from.node(listDepth);
+                 const index = $from.index(listDepth);
+                 
+                 if (index > 0) {
+                   const prevItem = listNode.child(index - 1);
+                   if (prevItem.childCount > 1) {
+                     const lastChild = prevItem.lastChild;
+                     if (lastChild?.type.name === 'orderedList' || lastChild?.type.name === 'bulletList') {
+                       prevItemHasList = true;
+                     }
+                   }
+                 }
+               }
+             } catch (err) {
+               console.error("Error inspecting Prosemirror state:", err);
+             }
+
+             this.editor.commands.sinkListItem('listItem');
+
+             if (!prevItemHasList && this.editor.isActive('orderedList')) {
+               this.editor.commands.toggleList('bulletList', 'listItem');
+             }
+             return true; 
+           }
+        }
+        return false;
+      }
+    };
+  }
+});
 
 const ReferenceModal = ({ 
   isOpen, 
@@ -311,6 +366,7 @@ const toolbarBtnStyle = (isActive: boolean): React.CSSProperties => ({
 export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) {
   const editor = useEditor({
     extensions: [
+      SmartTabExtension,
       StarterKit,
       MathExtension.configure({ evaluation: true }),
       Image.configure({
@@ -332,7 +388,8 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
     editorProps: {
       attributes: {
         class: 'tiptap-editor',
-        style: 'outline: none; min-height: 100%; font-size: 15px; line-height: 1.6; color: var(--text-primary);'
+        style: 'outline: none; min-height: 100%; font-size: 15px; line-height: 1.6; color: var(--text-primary);',
+        spellcheck: 'true'
       },
       handleClick(_view, _pos, event) {
         const target = event.target as HTMLElement;
