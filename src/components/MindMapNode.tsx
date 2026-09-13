@@ -26,6 +26,12 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
     const handleEditStart = (e: any) => {
       if (e.detail.id === id) {
         setIsEditing(true);
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+          }
+        }, 10);
       }
     };
     window.addEventListener('start-node-edit', handleEditStart);
@@ -34,8 +40,12 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+        }
+      }, 50);
     }
   }, [isEditing]);
 
@@ -182,6 +192,7 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
       {isEditing ? (
         <input
           ref={inputRef}
+          className="nodrag nopan"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           onBlur={saveLabel}

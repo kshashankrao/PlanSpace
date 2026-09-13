@@ -43,7 +43,7 @@ export default function CreateMindMapModal({ onClose, onSuccess }: CreateMindMap
       justifyContent: 'center',
       zIndex: 1000,
     }}
-    onKeyDown={e => e.stopPropagation()}
+    onClick={onClose}
     >
       <div style={{
         backgroundColor: 'var(--n0)',
@@ -52,7 +52,9 @@ export default function CreateMindMapModal({ onClose, onSuccess }: CreateMindMap
         width: '400px',
         maxWidth: '90%',
         boxShadow: 'var(--shadow-dropdown)'
-      }}>
+      }}
+      onClick={e => e.stopPropagation()}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
           <h2 style={{ fontSize: '20px', margin: 0 }}>Create Mind Map</h2>
           <button onClick={onClose} className="btn btn-ghost" style={{ padding: '4px' }}>

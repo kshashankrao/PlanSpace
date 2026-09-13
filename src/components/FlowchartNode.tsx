@@ -22,7 +22,17 @@ export default function FlowchartNode({ id, data }: NodeProps) {
 
   useEffect(() => {
     const handleEditStart = (e: any) => {
-      if (e.detail.id === id) setIsEditing(true);
+      if (e.detail.id === id) {
+        setIsEditing(true);
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+            inputRef.current.style.height = 'auto';
+            inputRef.current.style.height = inputRef.current.scrollHeight + 'px';
+          }
+        }, 10);
+      }
     };
     window.addEventListener('start-flowchart-node-edit', handleEditStart);
     return () => window.removeEventListener('start-flowchart-node-edit', handleEditStart);
@@ -30,11 +40,14 @@ export default function FlowchartNode({ id, data }: NodeProps) {
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-      // trigger auto-grow on mount
-      inputRef.current.style.height = 'auto';
-      inputRef.current.style.height = inputRef.current.scrollHeight + 'px';
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+          inputRef.current.style.height = 'auto';
+          inputRef.current.style.height = inputRef.current.scrollHeight + 'px';
+        }
+      }, 50);
     }
   }, [isEditing]);
 
@@ -162,6 +175,7 @@ export default function FlowchartNode({ id, data }: NodeProps) {
         {isEditing ? (
           <textarea
             ref={inputRef}
+            className="nodrag nopan"
             value={label}
             rows={1}
             onChange={handleTextareaChange}

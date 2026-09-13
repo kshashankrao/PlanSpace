@@ -2,9 +2,13 @@ import { useState, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
+import ImageResize from 'tiptap-extension-resize-image';
 import Link from '@tiptap/extension-link';
-import { Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3, Image as ImageIcon, MoreVertical, CheckSquare, Share2, FileDown, FileText } from 'lucide-react';
+import { Color } from '@tiptap/extension-color';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Highlight } from '@tiptap/extension-highlight';
+import SearchAndReplace from '@sereneinserenade/tiptap-search-and-replace';
+import { Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3, Image as ImageIcon, MoreVertical, CheckSquare, Share2, FileDown, FileText, Highlighter, Search, BookOpen } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -140,16 +144,34 @@ const ReferenceModal = ({
 
 const MenuBar = ({ editor }: { editor: any }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showToc, setShowToc] = useState(false);
   const [modalType, setModalType] = useState<'task' | 'mindmap' | null>(null);
 
-  // Close menu when clicking outside
+  // Close menus when clicking outside
   useEffect(() => {
-    const handleClickOutside = () => setIsMenuOpen(false);
-    if (isMenuOpen) {
+    const handleClickOutside = () => {
+      setIsMenuOpen(false);
+      setShowToc(false);
+    };
+    if (isMenuOpen || showToc) {
       document.addEventListener('click', handleClickOutside);
     }
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [isMenuOpen]);
+  }, [isMenuOpen, showToc]);
+
+  const getHeadings = () => {
+    const headings: { text: string; level: number; pos: number }[] = [];
+    editor.state.doc.descendants((node: any, pos: number) => {
+      if (node.type.name === 'heading') {
+        headings.push({
+          text: node.textContent || 'Empty Heading',
+          level: node.attrs.level,
+          pos,
+        });
+      }
+    });
+    return headings;
+  };
 
   const handleSelect = (id: string, title: string) => {
     const url = modalType === 'task' ? `#task-${id}` : `#mindmap-${id}`;
@@ -242,6 +264,45 @@ const MenuBar = ({ editor }: { editor: any }) => {
       >
         <Strikethrough size={18} />
       </button>
+
+      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 8px' }} />
+
+      {/* Search Input */}
+      <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--n0)', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0 8px', marginLeft: 'auto', gap: '4px' }}>
+        <Search size={14} color="var(--text-secondary)" />
+        <input 
+          type="text" 
+          placeholder="Find..." 
+          onChange={(e) => editor.commands.setSearchTerm(e.target.value)}
+          style={{ border: 'none', outline: 'none', width: '120px', fontSize: '13px', backgroundColor: 'transparent', color: 'var(--n800)' }}
+        />
+      </div>
+
+      <button
+        onClick={() => editor.chain().focus().toggleHighlight().run()}
+        className={`toolbar-btn ${editor.isActive('highlight') ? 'active' : ''}`}
+        title="Highlight"
+        style={toolbarBtnStyle(editor.isActive('highlight'))}
+      >
+        <Highlighter size={18} />
+      </button>
+
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }} title="Text Color">
+        <input
+          type="color"
+          onInput={(e) => editor.chain().focus().setColor(e.currentTarget.value).run()}
+          value={editor.getAttributes('textStyle').color || '#000000'}
+          style={{
+            width: '24px',
+            height: '24px',
+            padding: 0,
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            backgroundColor: 'transparent'
+          }}
+        />
+      </div>
       
       <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 8px' }} />
 
@@ -290,6 +351,61 @@ const MenuBar = ({ editor }: { editor: any }) => {
       >
         <ImageIcon size={18} />
       </button>
+
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowToc(!showToc); setIsMenuOpen(false); }}
+          className="toolbar-btn"
+          title="Table of Contents"
+          style={toolbarBtnStyle(false)}
+        >
+          <BookOpen size={18} />
+        </button>
+        {showToc && (
+          <div 
+            style={{ 
+              position: 'absolute', top: '100%', left: 0, marginTop: '8px',
+              backgroundColor: 'var(--n0)', border: '1px solid var(--border-color)', 
+              borderRadius: 'var(--radius)', padding: '8px', minWidth: '250px',
+              boxShadow: 'var(--shadow-dropdown)', zIndex: 100,
+              maxHeight: '300px', overflowY: 'auto',
+              display: 'flex', flexDirection: 'column'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: '4px 8px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Table of Contents
+            </div>
+            {getHeadings().length === 0 ? (
+              <div style={{ padding: '8px', color: 'var(--n500)', fontSize: '13px' }}>No headings found</div>
+            ) : (
+              getHeadings().map((h, i) => (
+                <div
+                  key={i}
+                  onClick={() => {
+                    editor.commands.focus();
+                    editor.commands.setTextSelection(h.pos);
+                    // scroll into view
+                    const view = editor.view;
+                    const coords = view.coordsAtPos(h.pos);
+                    window.scrollTo({ top: coords.top + window.scrollY - 100, behavior: 'smooth' });
+                    setShowToc(false);
+                  }}
+                  className="dropdown-item"
+                  style={{
+                    padding: '6px 8px', paddingLeft: `${(h.level - 1) * 12 + 8}px`,
+                    cursor: 'pointer', fontSize: '13px', color: 'var(--n800)',
+                    borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                  }}
+                  title={h.text}
+                >
+                  {h.text}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       <div style={{ position: 'relative' }}>
         <button
@@ -368,10 +484,13 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
     extensions: [
       SmartTabExtension,
       StarterKit,
+      TextStyle,
+      Color,
+      Highlight.configure({ multicolor: true }),
       MathExtension.configure({ evaluation: true }),
-      Image.configure({
+      SearchAndReplace.configure({ searchResultClass: 'search-result' }),
+      ImageResize.configure({
         inline: true,
-        allowBase64: true,
       }),
       Link.configure({
         openOnClick: false,

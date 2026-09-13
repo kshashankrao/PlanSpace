@@ -315,7 +315,6 @@ export default function Docs() {
         {activeDoc ? (
           <>
             <div style={{ marginBottom: '24px' }}>
-              <div className="breadcrumb" style={{ marginBottom: '16px' }}>Projects / Knowledge Base</div>
               <input
                 value={activeDoc.title}
                 onChange={(e) => handleUpdateTitle(activeDoc.id, e.target.value)}

@@ -34,13 +34,15 @@ export default function CreateFlowchartModal({ onClose, onSuccess }: Props) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1000,
       }}
-      onKeyDown={e => e.stopPropagation()}
+      onClick={onClose}
     >
       <div style={{
         backgroundColor: 'var(--n0)', padding: '24px',
         borderRadius: 'var(--radius)', width: '400px', maxWidth: '90%',
         boxShadow: 'var(--shadow-dropdown)'
-      }}>
+      }}
+      onClick={e => e.stopPropagation()}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
           <h2 style={{ fontSize: '20px', margin: 0 }}>Create Flowchart</h2>
           <button onClick={onClose} className="btn btn-ghost" style={{ padding: '4px' }}>

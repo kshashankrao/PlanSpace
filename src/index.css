@@ -415,6 +415,24 @@ input:focus, textarea:focus, select:focus {
   color: var(--b500);
 }
 
+.tiptap p.is-editor-empty:first-child::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.search-result {
+  background-color: rgba(255, 212, 0, 0.4);
+  border-bottom: 2px solid #ffd400;
+}
+
+.tiptap h1, .tiptap h2, .tiptap h3 {
+  text-transform: capitalize;
+  font-weight: bold;
+}
+
 .tiptap-editor a.smart-reference[href^="#task-"]::before {
   content: '☑️';
   margin-right: 4px;
