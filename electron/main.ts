@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import contextMenu from 'electron-context-menu';
@@ -68,4 +69,32 @@ app.on('activate', () => {
   }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  // Setup auto updater
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Checking for updates...');
+  });
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available.', info);
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('Update not available.', info);
+  });
+  autoUpdater.on('error', (err) => {
+    console.error('Error in auto-updater.', err);
+  });
+  autoUpdater.on('download-progress', (progressObj) => {
+    let log_message = "Download speed: " + progressObj.bytesPerSecond;
+    log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
+    log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+    console.log(log_message);
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded', info);
+    // The update will automatically be installed when the app quits
+  });
+
+  autoUpdater.checkForUpdatesAndNotify();
+});

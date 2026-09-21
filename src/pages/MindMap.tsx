@@ -16,8 +16,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import MindMapNode from '../components/MindMapNode';
 import CreateMindMapModal from '../components/CreateMindMapModal';
-import { MoreHorizontal, Keyboard, X, Trash2, Edit2, Download } from 'lucide-react';
+import { MoreHorizontal, Keyboard, X, Trash2, Edit2, Download, Network } from 'lucide-react';
 import { toPng } from 'html-to-image';
+import { getLayoutedElements } from '../utils/layout';
 
 const nodeTypes = {
   custom: MindMapNode,
@@ -167,6 +168,25 @@ function MindMapContent() {
     setOpenDropdownId(null);
   };
 
+  const handleAutoLayout = useCallback(async () => {
+    if (nodes.length === 0 || !activeMindMapId) return;
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(nodes, edges, 'LR');
+    
+    // Update State
+    setNodes([...layoutedNodes]);
+    setEdges([...layoutedEdges]);
+
+    // Save to DB
+    for (const node of layoutedNodes) {
+      await db.mindMapNodes.update(node.id, { position: node.position });
+    }
+
+    // Fit view after small delay
+    setTimeout(() => {
+      fitView({ padding: 0.2, duration: 800 });
+    }, 50);
+  }, [nodes, edges, activeMindMapId, setNodes, setEdges, fitView]);
+
   // --- Keyboard Shortcuts (FreeMind style) ---
   const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
     const selectedNodes = nodes.filter(n => n.selected);
@@ -199,18 +219,11 @@ function MindMapContent() {
         target: newId
       });
 
-      setNodes(nds => nds.map(n => ({ ...n, selected: false })).concat({
-        id: newId,
-        type: 'custom',
-        position: newPos,
-        data: { label: '', isNew: true },
-        selected: true
-      }));
-
       // Select new node and edit
       setTimeout(() => {
+        setNodes(nds => nds.map(n => ({ ...n, selected: n.id === newId })));
         window.dispatchEvent(new CustomEvent('start-node-edit', { detail: { id: newId } }));
-      }, 50);
+      }, 150);
 
     } else if (e.key === 'Enter') {
       e.preventDefault();
@@ -240,17 +253,10 @@ function MindMapContent() {
         target: newId
       });
 
-      setNodes(nds => nds.map(n => ({ ...n, selected: false })).concat({
-        id: newId,
-        type: 'custom',
-        position: newPos,
-        data: { label: '', isNew: true },
-        selected: true
-      }));
-
       setTimeout(() => {
+        setNodes(nds => nds.map(n => ({ ...n, selected: n.id === newId })));
         window.dispatchEvent(new CustomEvent('start-node-edit', { detail: { id: newId } }));
-      }, 50);
+      }, 150);
 
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
@@ -349,7 +355,12 @@ function MindMapContent() {
       </div>
 
       {/* Shared Action Bar */}
-      <div style={{ padding: '16px 40px 0 40px', display: 'flex', justifyContent: 'flex-end', backgroundColor: 'var(--bg-board)' }}>
+      <div style={{ padding: '16px 40px 0 40px', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: 'var(--bg-board)' }}>
+        {activeView === 'canvas' && (
+          <button onClick={handleAutoLayout} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Network size={16} /> Auto Layout
+          </button>
+        )}
         <button onClick={() => setIsCreatingMindMap(true)} className="btn btn-primary">
           Create Mind Map
         </button>

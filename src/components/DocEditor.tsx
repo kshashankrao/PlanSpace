@@ -24,13 +24,36 @@ import {
   List, ListOrdered, ListTodo,
   Heading1, Heading2, Heading3, TextQuote, Minus,
   Image as ImageIcon, Table as TableIcon,
-  MoreVertical, CheckSquare, Share2, FileDown, FileText, Highlighter, Search, BookOpen 
+  MoreVertical, CheckSquare, Share2, FileDown, FileText, Highlighter, Search, BookOpen, Network, FileImage
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { MathExtension } from '@aarkue/tiptap-math-extension';
 import 'katex/dist/katex.min.css';
+import EmbeddedDiagramNodeComponent from './EmbeddedDiagramNode';
+
+const EmbeddedDiagramNode = Node.create({
+  name: 'embeddedDiagram',
+  group: 'block',
+  atom: true,
+  addAttributes() {
+    return {
+      diagramId: { default: null },
+      diagramType: { default: 'mindmap' },
+      title: { default: '' },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'div[data-type="embedded-diagram"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'embedded-diagram' })];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(EmbeddedDiagramNodeComponent);
+  },
+});
 
 interface DocEditorProps {
   initialContent: string;
@@ -167,7 +190,7 @@ const ReferenceModal = ({
 }: { 
   isOpen: boolean, 
   onClose: () => void, 
-  type: 'task' | 'mindmap', 
+  type: 'task' | 'mindmap' | 'flowchart' | 'embed_mindmap' | 'embed_flowchart', 
   onSelect: (id: string, title: string) => void 
 }) => {
   const [search, setSearch] = useState('');
@@ -176,9 +199,12 @@ const ReferenceModal = ({
     if (type === 'task') {
       const tasks = await db.tasks.toArray();
       return tasks.filter(t => t.title.toLowerCase().includes(search.toLowerCase())).map(t => ({ id: t.id, title: t.title }));
-    } else {
+    } else if (type === 'mindmap' || type === 'embed_mindmap') {
       const maps = await db.mindMaps.toArray();
       return maps.filter(m => m.title.toLowerCase().includes(search.toLowerCase())).map(m => ({ id: m.id, title: m.title }));
+    } else {
+      const flowcharts = await db.flowcharts.toArray();
+      return flowcharts.filter(f => f.title.toLowerCase().includes(search.toLowerCase())).map(f => ({ id: f.id, title: f.title }));
     }
   }, [type, search]);
 
@@ -194,7 +220,7 @@ const ReferenceModal = ({
         background: 'var(--n0)', borderRadius: '8px', padding: '16px', 
         width: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column'
       }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 16px 0' }}>Link to {type === 'task' ? 'Task' : 'Mind Map'}</h3>
+        <h3 style={{ margin: '0 0 16px 0' }}>{type.includes('embed') ? 'Embed' : 'Link to'} {type.includes('task') ? 'Task' : type.includes('mindmap') ? 'Mind Map' : 'Flowchart'}</h3>
         <input 
           autoFocus
           placeholder="Search..."
@@ -216,7 +242,7 @@ const ReferenceModal = ({
               }}
               className="dropdown-item"
             >
-              {type === 'task' ? <CheckSquare size={16} color="var(--prio-medium)" /> : <Share2 size={16} color="var(--prio-high)" />}
+              {type.includes('task') ? <CheckSquare size={16} color="var(--prio-medium)" /> : type.includes('mindmap') ? <Network size={16} color="var(--prio-high)" /> : <Share2 size={16} color="var(--prio-high)" />}
               {item.title}
             </button>
           ))}
@@ -229,7 +255,7 @@ const ReferenceModal = ({
 
 const MenuBar = ({ editor }: { editor: any }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [modalType, setModalType] = useState<'task' | 'mindmap' | null>(null);
+  const [modalType, setModalType] = useState<'task' | 'mindmap' | 'flowchart' | 'embed_mindmap' | 'embed_flowchart' | null>(null);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -243,8 +269,16 @@ const MenuBar = ({ editor }: { editor: any }) => {
   }, [isMenuOpen]);
 
   const handleSelect = (id: string, title: string) => {
-    const url = modalType === 'task' ? `#task-${id}` : `#mindmap-${id}`;
-    editor.chain().focus().setLink({ href: url, target: '_self' }).insertContent(title).run();
+    if (modalType?.startsWith('embed_')) {
+      const diagramType = modalType === 'embed_mindmap' ? 'mindmap' : 'flowchart';
+      editor.chain().focus().insertContent({
+        type: 'embeddedDiagram',
+        attrs: { diagramId: id, diagramType, title }
+      }).run();
+    } else {
+      const url = modalType === 'task' ? `#task-${id}` : modalType === 'mindmap' ? `#mindmap-${id}` : `#flowchart-${id}`;
+      editor.chain().focus().setLink({ href: url, target: '_self' }).insertContent(title).run();
+    }
   };
 
   const exportToPDF = () => {
@@ -393,6 +427,27 @@ const MenuBar = ({ editor }: { editor: any }) => {
             >
               <Share2 size={16} /> Add reference to mind map
             </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setModalType('flowchart'); setIsMenuOpen(false); }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              className="dropdown-item"
+            >
+              <Share2 size={16} /> Add reference to flowchart
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setModalType('embed_mindmap'); setIsMenuOpen(false); }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              className="dropdown-item"
+            >
+              <Network size={16} /> Embed mind map
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setModalType('embed_flowchart'); setIsMenuOpen(false); }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              className="dropdown-item"
+            >
+              <FileImage size={16} /> Embed flowchart
+            </button>
             <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }} />
             <button 
               onClick={(e) => { e.stopPropagation(); exportToPDF(); setIsMenuOpen(false); }}
@@ -442,6 +497,7 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
     extensions: [
       SmartTabExtension,
       TocNode,
+      EmbeddedDiagramNode,
       StarterKit,
       TextStyle,
       Color,
@@ -495,6 +551,11 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
             event.preventDefault();
             const mindmapId = href.replace('#mindmap-', '');
             window.location.hash = `#/mindmap?map=${mindmapId}`;
+            return true;
+          } else if (href?.startsWith('#flowchart-')) {
+            event.preventDefault();
+            const flowchartId = href.replace('#flowchart-', '');
+            window.location.hash = `#/flowchart?map=${flowchartId}`;
             return true;
           }
         }

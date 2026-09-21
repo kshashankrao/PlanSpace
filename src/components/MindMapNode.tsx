@@ -124,13 +124,7 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        if (data.taskId) {
-          openTask(e);
-        } else {
-          if (window.confirm('Do you want to create a task from this node?')) {
-            convertToTask(e);
-          }
-        }
+        setIsEditing(true);
       }}
       className="mindmap-node"
     >
@@ -197,6 +191,7 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
           onChange={(e) => setLabel(e.target.value)}
           onBlur={saveLabel}
           onKeyDown={handleKeyDown}
+          onMouseDown={(e) => e.stopPropagation()} // Prevent React Flow from stealing focus back
           style={{
             background: 'transparent',
             border: 'none',
