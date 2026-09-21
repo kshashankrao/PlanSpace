@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import { Extension } from '@tiptap/core';
+import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
+import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import ImageResize from 'tiptap-extension-resize-image';
 import Link from '@tiptap/extension-link';
@@ -8,7 +8,24 @@ import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Highlight } from '@tiptap/extension-highlight';
 import SearchAndReplace from '@sereneinserenade/tiptap-search-and-replace';
-import { Bold, Italic, Strikethrough, List, ListOrdered, Heading1, Heading2, Heading3, Image as ImageIcon, MoreVertical, CheckSquare, Share2, FileDown, FileText, Highlighter, Search, BookOpen } from 'lucide-react';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { TaskList } from '@tiptap/extension-task-list';
+import { TaskItem } from '@tiptap/extension-task-item';
+import TextAlign from '@tiptap/extension-text-align';
+import Underline from '@tiptap/extension-underline';
+import Superscript from '@tiptap/extension-superscript';
+import Subscript from '@tiptap/extension-subscript';
+import { 
+  Bold, Italic, Strikethrough, Underline as UnderlineIcon, Superscript as SuperscriptIcon, Subscript as SubscriptIcon,
+  AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  List, ListOrdered, ListTodo,
+  Heading1, Heading2, Heading3, TextQuote, Minus,
+  Image as ImageIcon, Table as TableIcon,
+  MoreVertical, CheckSquare, Share2, FileDown, FileText, Highlighter, Search, BookOpen 
+} from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
@@ -19,6 +36,74 @@ interface DocEditorProps {
   initialContent: string;
   onUpdate: (content: string) => void;
 }
+
+const TocComponent = (props: any) => {
+  const getHeadings = () => {
+    const headings: { text: string; level: number; pos: number }[] = [];
+    props.editor.state.doc.descendants((node: any, pos: number) => {
+      if (node.type.name === 'heading') {
+        headings.push({
+          text: node.textContent || 'Empty Heading',
+          level: node.attrs.level,
+          pos,
+        });
+      }
+    });
+    return headings;
+  };
+
+  return (
+    <NodeViewWrapper className="toc-node" contentEditable={false}>
+      <div style={{ padding: '16px', backgroundColor: 'var(--n50)', border: '1px solid var(--n100)', borderRadius: '8px', margin: '16px 0', userSelect: 'none' }}>
+        <h4 style={{ margin: '0 0 8px 0', textTransform: 'uppercase', fontSize: '12px', color: 'var(--n500)' }}>Table of Contents</h4>
+        {getHeadings().length === 0 ? (
+           <div style={{ color: 'var(--n400)', fontSize: '13px' }}>No headings found.</div>
+        ) : (
+          getHeadings().map((h, i) => (
+            <div
+              key={i}
+              onClick={(e) => {
+                e.preventDefault();
+                props.editor.commands.focus();
+                props.editor.commands.setTextSelection(h.pos);
+                const view = props.editor.view;
+                const coords = view.coordsAtPos(h.pos);
+                window.scrollTo({ top: coords.top + window.scrollY - 100, behavior: 'smooth' });
+              }}
+              style={{
+                paddingLeft: `${(h.level - 1) * 16}px`,
+                cursor: 'pointer',
+                color: 'var(--b500)',
+                textDecoration: 'underline',
+                paddingTop: '4px',
+                paddingBottom: '4px',
+                fontSize: '14px'
+              }}
+            >
+              {h.text}
+            </div>
+          ))
+        )}
+      </div>
+    </NodeViewWrapper>
+  );
+};
+
+const TocNode = Node.create({
+  name: 'toc',
+  group: 'block',
+  atom: true,
+  parseHTML() {
+    return [{ tag: 'div[data-type="toc"]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'toc' })];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(TocComponent);
+  },
+});
+
 
 const SmartTabExtension = Extension.create({
   name: 'smartTab',
@@ -144,34 +229,18 @@ const ReferenceModal = ({
 
 const MenuBar = ({ editor }: { editor: any }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [showToc, setShowToc] = useState(false);
   const [modalType, setModalType] = useState<'task' | 'mindmap' | null>(null);
 
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
       setIsMenuOpen(false);
-      setShowToc(false);
     };
-    if (isMenuOpen || showToc) {
+    if (isMenuOpen) {
       document.addEventListener('click', handleClickOutside);
     }
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [isMenuOpen, showToc]);
-
-  const getHeadings = () => {
-    const headings: { text: string; level: number; pos: number }[] = [];
-    editor.state.doc.descendants((node: any, pos: number) => {
-      if (node.type.name === 'heading') {
-        headings.push({
-          text: node.textContent || 'Empty Heading',
-          level: node.attrs.level,
-          pos,
-        });
-      }
-    });
-    return headings;
-  };
+  }, [isMenuOpen]);
 
   const handleSelect = (id: string, title: string) => {
     const url = modalType === 'task' ? `#task-${id}` : `#mindmap-${id}`;
@@ -212,200 +281,87 @@ const MenuBar = ({ editor }: { editor: any }) => {
   if (!editor) return null;
 
   return (
-    <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-board)' }}>
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        className={`toolbar-btn ${editor.isActive('heading', { level: 1 }) ? 'active' : ''}`}
-        title="Heading 1"
-        style={toolbarBtnStyle(editor.isActive('heading', { level: 1 }))}
-      >
-        <Heading1 size={18} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        className={`toolbar-btn ${editor.isActive('heading', { level: 2 }) ? 'active' : ''}`}
-        title="Heading 2"
-        style={toolbarBtnStyle(editor.isActive('heading', { level: 2 }))}
-      >
-        <Heading2 size={18} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        className={`toolbar-btn ${editor.isActive('heading', { level: 3 }) ? 'active' : ''}`}
-        title="Heading 3"
-        style={toolbarBtnStyle(editor.isActive('heading', { level: 3 }))}
-      >
-        <Heading3 size={18} />
-      </button>
+    <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-board)', flexWrap: 'wrap' }}>
       
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 8px' }} />
-
-      <button
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`}
-        title="Bold"
-        style={toolbarBtnStyle(editor.isActive('bold'))}
-      >
-        <Bold size={18} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`}
-        title="Italic"
-        style={toolbarBtnStyle(editor.isActive('italic'))}
-      >
-        <Italic size={18} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-        className={`toolbar-btn ${editor.isActive('strike') ? 'active' : ''}`}
-        title="Strikethrough"
-        style={toolbarBtnStyle(editor.isActive('strike'))}
-      >
-        <Strikethrough size={18} />
-      </button>
-
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 8px' }} />
-
-      {/* Search Input */}
-      <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--n0)', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0 8px', marginLeft: 'auto', gap: '4px' }}>
-        <Search size={14} color="var(--text-secondary)" />
-        <input 
-          type="text" 
-          placeholder="Find..." 
-          onChange={(e) => editor.commands.setSearchTerm(e.target.value)}
-          style={{ border: 'none', outline: 'none', width: '120px', fontSize: '13px', backgroundColor: 'transparent', color: 'var(--n800)' }}
-        />
+      {/* Group 1: Inline Styles */}
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <button onClick={() => editor.chain().focus().toggleBold().run()} className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`} title="Bold" style={toolbarBtnStyle(editor.isActive('bold'))}><Bold size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`} title="Italic" style={toolbarBtnStyle(editor.isActive('italic'))}><Italic size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`toolbar-btn ${editor.isActive('underline') ? 'active' : ''}`} title="Underline" style={toolbarBtnStyle(editor.isActive('underline'))}><UnderlineIcon size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleStrike().run()} className={`toolbar-btn ${editor.isActive('strike') ? 'active' : ''}`} title="Strikethrough" style={toolbarBtnStyle(editor.isActive('strike'))}><Strikethrough size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={`toolbar-btn ${editor.isActive('superscript') ? 'active' : ''}`} title="Superscript" style={toolbarBtnStyle(editor.isActive('superscript'))}><SuperscriptIcon size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={`toolbar-btn ${editor.isActive('subscript') ? 'active' : ''}`} title="Subscript" style={toolbarBtnStyle(editor.isActive('subscript'))}><SubscriptIcon size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleHighlight().run()} className={`toolbar-btn ${editor.isActive('highlight') ? 'active' : ''}`} title="Highlight" style={toolbarBtnStyle(editor.isActive('highlight'))}><Highlighter size={18} /></button>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginLeft: '4px' }} title="Text Color">
+          <input type="color" onInput={(e) => editor.chain().focus().setColor(e.currentTarget.value).run()} value={editor.getAttributes('textStyle').color || '#000000'} style={{ width: '20px', height: '20px', padding: 0, border: 'none', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'transparent' }} />
+        </div>
       </div>
 
-      <button
-        onClick={() => editor.chain().focus().toggleHighlight().run()}
-        className={`toolbar-btn ${editor.isActive('highlight') ? 'active' : ''}`}
-        title="Highlight"
-        style={toolbarBtnStyle(editor.isActive('highlight'))}
-      >
-        <Highlighter size={18} />
-      </button>
+      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
 
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }} title="Text Color">
-        <input
-          type="color"
-          onInput={(e) => editor.chain().focus().setColor(e.currentTarget.value).run()}
-          value={editor.getAttributes('textStyle').color || '#000000'}
-          style={{
-            width: '24px',
-            height: '24px',
-            padding: 0,
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            backgroundColor: 'transparent'
-          }}
-        />
+      {/* Group 2: Block Styles */}
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 1 }) ? 'active' : ''}`} title="Heading 1" style={toolbarBtnStyle(editor.isActive('heading', { level: 1 }))}><Heading1 size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 2 }) ? 'active' : ''}`} title="Heading 2" style={toolbarBtnStyle(editor.isActive('heading', { level: 2 }))}><Heading2 size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 3 }) ? 'active' : ''}`} title="Heading 3" style={toolbarBtnStyle(editor.isActive('heading', { level: 3 }))}><Heading3 size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`} title="Blockquote" style={toolbarBtnStyle(editor.isActive('blockquote'))}><TextQuote size={18} /></button>
       </div>
-      
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 8px' }} />
 
-      <button
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`}
-        title="Bullet List"
-        style={toolbarBtnStyle(editor.isActive('bulletList'))}
-      >
-        <List size={18} />
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`}
-        title="Ordered List"
-        style={toolbarBtnStyle(editor.isActive('orderedList'))}
-      >
-        <ListOrdered size={18} />
-      </button>
+      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
 
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 8px' }} />
+      {/* Group 3: Alignment */}
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'left' }) ? 'active' : ''}`} title="Align Left" style={toolbarBtnStyle(editor.isActive({ textAlign: 'left' }))}><AlignLeft size={18} /></button>
+        <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'center' }) ? 'active' : ''}`} title="Align Center" style={toolbarBtnStyle(editor.isActive({ textAlign: 'center' }))}><AlignCenter size={18} /></button>
+        <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'right' }) ? 'active' : ''}`} title="Align Right" style={toolbarBtnStyle(editor.isActive({ textAlign: 'right' }))}><AlignRight size={18} /></button>
+        <button onClick={() => editor.chain().focus().setTextAlign('justify').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'justify' }) ? 'active' : ''}`} title="Justify" style={toolbarBtnStyle(editor.isActive({ textAlign: 'justify' }))}><AlignJustify size={18} /></button>
+      </div>
 
-      <button
-        onClick={() => {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = 'image/*';
-          input.onchange = (e: any) => {
-            const file = e.target.files[0];
-            if (file) {
-              const reader = new FileReader();
-              reader.onload = (e) => {
-                const result = e.target?.result;
-                if (typeof result === 'string') {
-                  editor.chain().focus().setImage({ src: result }).run();
-                }
-              };
-              reader.readAsDataURL(file);
-            }
-          };
-          input.click();
-        }}
-        className={`toolbar-btn`}
-        title="Insert Image"
-        style={toolbarBtnStyle(false)}
-      >
-        <ImageIcon size={18} />
-      </button>
+      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
 
-      <div style={{ position: 'relative' }}>
+      {/* Group 4: Lists */}
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`} title="Bullet List" style={toolbarBtnStyle(editor.isActive('bulletList'))}><List size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`} title="Ordered List" style={toolbarBtnStyle(editor.isActive('orderedList'))}><ListOrdered size={18} /></button>
+        <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={`toolbar-btn ${editor.isActive('taskList') ? 'active' : ''}`} title="Task List" style={toolbarBtnStyle(editor.isActive('taskList'))}><ListTodo size={18} /></button>
+      </div>
+
+      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
+
+      {/* Group 5: Inserts */}
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} className="toolbar-btn" title="Insert Table" style={toolbarBtnStyle(false)}><TableIcon size={18} /></button>
+        <button onClick={() => editor.chain().focus().setHorizontalRule().run()} className="toolbar-btn" title="Insert Divider" style={toolbarBtnStyle(false)}><Minus size={18} /></button>
         <button
-          onClick={(e) => { e.stopPropagation(); setShowToc(!showToc); setIsMenuOpen(false); }}
-          className="toolbar-btn"
-          title="Table of Contents"
+          onClick={() => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = (e: any) => {
+              const file = e.target.files[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                  const result = e.target?.result;
+                  if (typeof result === 'string') {
+                    editor.chain().focus().setImage({ src: result }).run();
+                  }
+                };
+                reader.readAsDataURL(file);
+              }
+            };
+            input.click();
+          }}
+          className={`toolbar-btn`}
+          title="Insert Image"
           style={toolbarBtnStyle(false)}
         >
-          <BookOpen size={18} />
+          <ImageIcon size={18} />
         </button>
-        {showToc && (
-          <div 
-            style={{ 
-              position: 'absolute', top: '100%', left: 0, marginTop: '8px',
-              backgroundColor: 'var(--n0)', border: '1px solid var(--border-color)', 
-              borderRadius: 'var(--radius)', padding: '8px', minWidth: '250px',
-              boxShadow: 'var(--shadow-dropdown)', zIndex: 100,
-              maxHeight: '300px', overflowY: 'auto',
-              display: 'flex', flexDirection: 'column'
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ padding: '4px 8px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>
-              Table of Contents
-            </div>
-            {getHeadings().length === 0 ? (
-              <div style={{ padding: '8px', color: 'var(--n500)', fontSize: '13px' }}>No headings found</div>
-            ) : (
-              getHeadings().map((h, i) => (
-                <div
-                  key={i}
-                  onClick={() => {
-                    editor.commands.focus();
-                    editor.commands.setTextSelection(h.pos);
-                    // scroll into view
-                    const view = editor.view;
-                    const coords = view.coordsAtPos(h.pos);
-                    window.scrollTo({ top: coords.top + window.scrollY - 100, behavior: 'smooth' });
-                    setShowToc(false);
-                  }}
-                  className="dropdown-item"
-                  style={{
-                    padding: '6px 8px', paddingLeft: `${(h.level - 1) * 12 + 8}px`,
-                    cursor: 'pointer', fontSize: '13px', color: 'var(--n800)',
-                    borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                  }}
-                  title={h.text}
-                >
-                  {h.text}
-                </div>
-              ))
-            )}
-          </div>
-        )}
+        <button onClick={(e) => { e.stopPropagation(); editor.chain().focus().insertContent({ type: 'toc' }).run(); }} className="toolbar-btn" title="Insert Table of Contents" style={toolbarBtnStyle(false)}><BookOpen size={18} /></button>
       </div>
+
+      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
 
       <div style={{ position: 'relative' }}>
         <button
@@ -480,9 +436,12 @@ const toolbarBtnStyle = (isActive: boolean): React.CSSProperties => ({
 });
 
 export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) {
+  const [showSearch, setShowSearch] = useState(false);
+  
   const editor = useEditor({
     extensions: [
       SmartTabExtension,
+      TocNode,
       StarterKit,
       TextStyle,
       Color,
@@ -490,7 +449,7 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
       MathExtension.configure({ evaluation: true }),
       SearchAndReplace.configure({ searchResultClass: 'search-result' }),
       ImageResize.configure({
-        inline: true,
+        inline: false,
       }),
       Link.configure({
         openOnClick: false,
@@ -498,7 +457,17 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
           class: 'smart-reference',
           target: '_self',
         }
-      })
+      }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      Underline,
+      Superscript,
+      Subscript
     ],
     content: initialContent,
     onUpdate: ({ editor }) => {
@@ -538,7 +507,7 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', border: '1px solid var(--border-color)', borderRadius: 'var(--radius)', overflow: 'hidden', backgroundColor: 'var(--n0)', boxShadow: 'var(--shadow-card)' }}>
       <MenuBar editor={editor} />
       <div 
-        style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', cursor: 'text' }} 
+        style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', cursor: 'text', position: 'relative' }} 
         className="tiptap-container"
         onClick={() => editor?.commands.focus()}
         onKeyDown={(e) => {
@@ -546,9 +515,34 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
             if (e.key === '1') { e.preventDefault(); editor?.commands.toggleHeading({ level: 1 }); }
             else if (e.key === '2') { e.preventDefault(); editor?.commands.toggleHeading({ level: 2 }); }
             else if (e.key === '3') { e.preventDefault(); editor?.commands.toggleHeading({ level: 3 }); }
+            else if (e.key.toLowerCase() === 'f') { e.preventDefault(); setShowSearch(true); }
           }
         }}
       >
+        {showSearch && (
+          <div style={{
+            position: 'absolute', top: '16px', right: '16px', zIndex: 50,
+            display: 'flex', alignItems: 'center', backgroundColor: 'var(--n0)', 
+            border: '1px solid var(--b400)', borderRadius: '4px', padding: '4px 8px', 
+            boxShadow: 'var(--shadow-dropdown)', gap: '6px'
+          }} onClick={e => e.stopPropagation()}>
+            <Search size={16} color="var(--b500)" />
+            <input 
+              autoFocus
+              type="text" 
+              placeholder="Find in document..." 
+              onChange={(e) => editor?.commands.setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setShowSearch(false);
+                  editor?.commands.setSearchTerm('');
+                  editor?.commands.focus();
+                }
+              }}
+              style={{ border: 'none', outline: 'none', width: '160px', fontSize: '13px', backgroundColor: 'transparent', color: 'var(--n800)' }}
+            />
+          </div>
+        )}
         <EditorContent editor={editor} />
       </div>
     </div>
