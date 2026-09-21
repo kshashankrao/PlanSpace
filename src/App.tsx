@@ -12,6 +12,7 @@ import GanttChart from './pages/GanttChart';
 import Flowchart from './pages/Flowchart';
 import DataManagementModal from './components/DataManagementModal';
 import type { Task } from './db/db';
+import packageJson from '../package.json';
 
 function Sidebar({ collapsed, onToggle, onOpenSettings }: { collapsed: boolean; onToggle: () => void; onOpenSettings: () => void }) {
   return (
@@ -55,6 +56,9 @@ function Sidebar({ collapsed, onToggle, onOpenSettings }: { collapsed: boolean; 
           <Settings size={18} />
           <span className="sidebar-text">Data Backup</span>
         </button>
+        <div className="sidebar-text" style={{ padding: '4px 16px', fontSize: '11px', color: 'var(--text-secondary)', userSelect: 'none' }}>
+          v{packageJson.version}
+        </div>
       </div>
     </div>
   );
