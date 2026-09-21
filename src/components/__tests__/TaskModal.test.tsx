@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import TaskModal from '../TaskModal';
 
@@ -30,17 +30,17 @@ describe('TaskModal', () => {
 
   it('renders task modal when open', () => {
     const mockOnClose = vi.fn();
-    render(<TaskModal onClose={mockOnClose} taskToEdit={mockTask} />);
+    const { getByDisplayValue } = render(<TaskModal onClose={mockOnClose} taskToEdit={mockTask} />);
     
     // Check if the title is there
-    expect(screen.getByDisplayValue('Test Task')).toBeInTheDocument();
+    expect(getByDisplayValue('Test Task')).toBeInTheDocument();
   });
 
   it('renders correctly with no task (creation mode)', () => {
     const mockOnClose = vi.fn();
-    render(<TaskModal onClose={mockOnClose} />);
+    const { queryByDisplayValue } = render(<TaskModal onClose={mockOnClose} />);
     
     // Check if it's absent
-    expect(screen.queryByDisplayValue('Test Task')).not.toBeInTheDocument();
+    expect(queryByDisplayValue('Test Task')).not.toBeInTheDocument();
   });
 });

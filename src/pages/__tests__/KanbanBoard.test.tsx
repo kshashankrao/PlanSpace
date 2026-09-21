@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import KanbanBoard from '../KanbanBoard';
 
@@ -33,14 +33,14 @@ vi.mock('dexie-react-hooks', () => ({
 
 describe('KanbanBoard', () => {
   it('renders columns and tasks', () => {
-    render(<KanbanBoard />);
+    const { getByText } = render(<KanbanBoard />);
     
     // Columns should be rendered
-    expect(screen.getByText('To Do')).toBeInTheDocument();
-    expect(screen.getByText('In Progress')).toBeInTheDocument();
+    expect(getByText('To Do')).toBeInTheDocument();
+    expect(getByText('In Progress')).toBeInTheDocument();
     
     // Tasks should be rendered
-    expect(screen.getByText('Task 1')).toBeInTheDocument();
-    expect(screen.getByText('Task 2')).toBeInTheDocument();
+    expect(getByText('Task 1')).toBeInTheDocument();
+    expect(getByText('Task 2')).toBeInTheDocument();
   });
 });
