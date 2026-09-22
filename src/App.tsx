@@ -1,5 +1,5 @@
-import { HashRouter as Router, Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Network, Settings, BookOpen, PanelLeftClose, PanelLeftOpen, Workflow } from 'lucide-react';
+import { HashRouter as Router, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Network, Settings, BookOpen, PanelLeftClose, PanelLeftOpen, Workflow, CalendarDays, ArrowLeft } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import KanbanBoard from './pages/KanbanBoard';
 import MindMap from './pages/MindMap';
@@ -10,11 +10,13 @@ import PlanningLayout from './pages/PlanningLayout';
 import SprintDetails from './pages/SprintDetails';
 import GanttChart from './pages/GanttChart';
 import Flowchart from './pages/Flowchart';
+import DailyNotes from './pages/DailyNotes';
 import DataManagementModal from './components/DataManagementModal';
 import type { Task } from './db/db';
 import packageJson from '../package.json';
 
 function Sidebar({ collapsed, onToggle, onOpenSettings }: { collapsed: boolean; onToggle: () => void; onOpenSettings: () => void }) {
+  const navigate = useNavigate();
   return (
     <div className={`sidebar ${collapsed ? 'collapsed' : ''}`} style={{ position: 'relative' }}>
       <button className="sidebar-toggle-btn" onClick={onToggle}>
@@ -49,12 +51,20 @@ function Sidebar({ collapsed, onToggle, onOpenSettings }: { collapsed: boolean; 
           <Workflow size={18} />
           <span className="sidebar-text">Flowchart</span>
         </NavLink>
+        <NavLink to="/daily-notes" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Daily Notes">
+          <CalendarDays size={18} />
+          <span className="sidebar-text">Daily Notes</span>
+        </NavLink>
       </nav>
 
       <div style={{ marginTop: 'auto' }}>
+        <button onClick={() => navigate(-1)} className="btn btn-ghost nav-link" style={{ width: '100%', justifyContent: 'flex-start' }} title="Go Back">
+          <ArrowLeft size={18} />
+          <span className="sidebar-text">Go Back</span>
+        </button>
         <button onClick={onOpenSettings} className="btn btn-ghost nav-link" style={{ width: '100%', justifyContent: 'flex-start' }} title="Settings">
           <Settings size={18} />
-          <span className="sidebar-text">Data Backup</span>
+          <span className="sidebar-text">Settings</span>
         </button>
         <div className="sidebar-text" style={{ padding: '4px 16px', fontSize: '11px', color: 'var(--text-secondary)', userSelect: 'none' }}>
           v{packageJson.version}
@@ -103,6 +113,7 @@ function App() {
               <Route path="/mindmap" element={<MindMap />} />
               <Route path="/docs" element={<Docs />} />
               <Route path="/flowchart" element={<Flowchart />} />
+              <Route path="/daily-notes" element={<DailyNotes />} />
               <Route path="/calendar" element={<div>Calendar View (Coming Soon)</div>} />
             </Routes>
           </div>

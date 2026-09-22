@@ -71,6 +71,13 @@ export interface Flowchart {
   updatedAt: number;
 }
 
+export interface DailyNote {
+  date: string; // YYYY-MM-DD
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface FlowchartNodeData {
   id: string;
   flowchartId: string;
@@ -110,6 +117,7 @@ const db = new Dexie('TaskAppDatabase') as Dexie & {
   flowcharts: EntityTable<Flowchart, 'id'>;
   flowchartNodes: EntityTable<FlowchartNodeData, 'id'>;
   flowchartEdges: EntityTable<FlowchartEdgeData, 'id'>;
+  dailyNotes: EntityTable<DailyNote, 'date'>;
 };
 
 db.version(1).stores({
@@ -178,6 +186,21 @@ db.version(7).stores({
   flowcharts: 'id, createdAt, updatedAt',
   flowchartNodes: 'id, flowchartId, taskId',
   flowchartEdges: 'id, flowchartId, source, target'
+});
+
+db.version(8).stores({
+  tasks: 'id, statusId, priority, dueDate, createdAt, mindmapNodeId, order, sprintId',
+  statuses: 'id, order',
+  sprints: 'id, status',
+  mindMaps: 'id, createdAt, updatedAt',
+  mindMapNodes: 'id, taskId, mindMapId',
+  mindMapEdges: 'id, source, target, mindMapId',
+  taskComments: 'id, taskId, createdAt',
+  docs: 'id, parentId, createdAt, updatedAt',
+  flowcharts: 'id, createdAt, updatedAt',
+  flowchartNodes: 'id, flowchartId, taskId',
+  flowchartEdges: 'id, flowchartId, source, target',
+  dailyNotes: 'date, createdAt, updatedAt'
 });
 
 // Populate default statuses on initial load

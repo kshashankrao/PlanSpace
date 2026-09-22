@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import DocEditor from '../components/DocEditor';
@@ -184,9 +185,18 @@ const DocTreeNode = ({
 
 export default function Docs() {
   const docs = useLiveQuery(() => db.docs.orderBy('createdAt').reverse().toArray());
+  const [searchParams] = useSearchParams();
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Handle URL deep links
+  useEffect(() => {
+    const urlDocId = searchParams.get('id');
+    if (urlDocId && urlDocId !== activeDocId) {
+      setActiveDocId(urlDocId);
+    }
+  }, [searchParams, activeDocId]);
 
   // Handle global F2 shortcut
   useEffect(() => {

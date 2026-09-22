@@ -1,11 +1,38 @@
 import React, { useState, useRef } from 'react';
-import { X, Download, Upload, AlertTriangle } from 'lucide-react';
+import { X, Download, Upload, ArrowLeft, Keyboard } from 'lucide-react';
 import { db } from '../db/db';
 import { exportDB, importInto } from 'dexie-export-import';
+
+const ShortcutButton = ({ shortcut, description }: { shortcut: string; description: string }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(shortcut);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button 
+      onClick={handleCopy}
+      style={{ 
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '8px 8px', background: 'transparent', border: 'none', 
+        borderRadius: '6px', cursor: 'pointer', textAlign: 'left',
+        transition: 'all 0.1s',
+        color: copied ? 'var(--g600)' : 'var(--text-primary)'
+      }}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--n50)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+    >
+      <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '14px' }}>{copied ? 'Copied!' : shortcut}</span>
+      <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{description}</span>
+    </button>
+  );
+};
 
 export default function DataManagementModal({ onClose }: { onClose: () => void }) {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = async () => {
@@ -64,62 +91,80 @@ export default function DataManagementModal({ onClose }: { onClose: () => void }
     }}>
       <div style={{
         backgroundColor: 'var(--n0)',
-        padding: '32px',
+        padding: '24px',
         borderRadius: 'var(--radius)',
-        width: '500px',
+        width: '400px',
         maxWidth: '90%',
-        boxShadow: 'var(--shadow-dropdown)'
+        boxShadow: 'var(--shadow-dropdown)',
+        maxHeight: '90vh',
+        overflowY: 'auto'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-          <h2 style={{ fontSize: '20px', margin: 0 }}>Data Management</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {showShortcuts && (
+              <button onClick={() => setShowShortcuts(false)} className="btn btn-ghost" style={{ padding: '4px' }}>
+                <ArrowLeft size={20} />
+              </button>
+            )}
+            <h2 style={{ fontSize: '20px', margin: 0 }}>{showShortcuts ? 'Editor Shortcuts' : 'Settings'}</h2>
+          </div>
           <button onClick={onClose} className="btn btn-ghost" style={{ padding: '4px' }}>
             <X size={20} />
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Export Section */}
-          <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
-            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0', color: 'var(--n800)' }}>Export Data</h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.5 }}>
-              Download a complete backup of your PlanSpace workspace (Tasks, Sprints, Mind Maps, Flowcharts, and Docs) as a JSON file.
-            </p>
-            <button 
-              onClick={handleExport} 
-              disabled={isExporting}
-              className="btn btn-secondary" 
-              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <Download size={16} />
-              {isExporting ? 'Exporting...' : 'Export to JSON'}
-            </button>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {!showShortcuts ? (
+            <>
+              <button 
+                onClick={handleExport} 
+                disabled={isExporting}
+                className="btn btn-secondary" 
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', justifyContent: 'center', fontSize: '15px' }}
+              >
+                <Download size={18} />
+                {isExporting ? 'Exporting...' : 'Export to JSON'}
+              </button>
 
-          {/* Import Section */}
-          <div style={{ border: '1px solid var(--r200)', borderRadius: '8px', padding: '16px', backgroundColor: '#FEF2F2' }}>
-            <h3 style={{ fontSize: '16px', margin: '0 0 8px 0', color: 'var(--r500)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertTriangle size={18} /> Restore Data
-            </h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: '0 0 16px 0', lineHeight: 1.5 }}>
-              Restore your workspace from a previous backup file. <strong>This will completely overwrite your current data.</strong>
-            </p>
-            <input 
-              type="file" 
-              accept=".json"
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              onChange={handleImport}
-            />
-            <button 
-              onClick={() => fileInputRef.current?.click()} 
-              disabled={isImporting}
-              className="btn" 
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--n0)', border: '1px solid var(--r300)', color: 'var(--r500)' }}
-            >
-              <Upload size={16} />
-              {isImporting ? 'Importing...' : 'Import from JSON'}
-            </button>
-          </div>
+              <button 
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={isImporting}
+                className="btn" 
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', justifyContent: 'center', backgroundColor: 'var(--n0)', border: '1px solid var(--r300)', color: 'var(--r500)', fontSize: '15px' }}
+              >
+                <Upload size={18} />
+                {isImporting ? 'Importing...' : 'Import from JSON'}
+              </button>
+
+              <button 
+                onClick={() => setShowShortcuts(true)} 
+                className="btn btn-secondary" 
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', justifyContent: 'center', fontSize: '15px' }}
+              >
+                <Keyboard size={18} />
+                Shortcuts
+              </button>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <ShortcutButton shortcut="/date" description="Open date picker" />
+              <ShortcutButton shortcut="/task" description="Link a task" />
+              <ShortcutButton shortcut="/docs" description="Link a document" />
+              <ShortcutButton shortcut="/mindmap" description="Link a mind map" />
+              <ShortcutButton shortcut="/flowchart" description="Link a flowchart" />
+              <ShortcutButton shortcut="/dailynotes" description="Link a daily note" />
+              <ShortcutButton shortcut="//mindmap" description="Embed a mind map" />
+              <ShortcutButton shortcut="//flowchart" description="Embed a flowchart" />
+            </div>
+          )}
+          
+          <input 
+            type="file" 
+            accept=".json"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            onChange={handleImport}
+          />
         </div>
 
       </div>

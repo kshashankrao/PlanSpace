@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
-import { Extension, Node, mergeAttributes } from '@tiptap/core';
+import { Extension, Node, mergeAttributes, InputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import ImageResize from 'tiptap-extension-resize-image';
 import Link from '@tiptap/extension-link';
@@ -24,7 +24,7 @@ import {
   List, ListOrdered, ListTodo,
   Heading1, Heading2, Heading3, TextQuote, Minus,
   Image as ImageIcon, Table as TableIcon,
-  MoreVertical, CheckSquare, Share2, FileDown, FileText, Highlighter, Search, BookOpen, Network, FileImage
+  MoreVertical, CheckSquare, Share2, FileDown, FileText, Highlighter, Search, BookOpen, Network, FileImage, CalendarDays
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -55,9 +55,92 @@ const EmbeddedDiagramNode = Node.create({
   },
 });
 
+const ReferenceNode = Node.create({
+  name: 'reference',
+  group: 'inline',
+  inline: true,
+  selectable: true,
+  atom: true,
+
+  addAttributes() {
+    return {
+      href: { default: null },
+      title: { default: '' },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: 'a.smart-reference',
+        priority: 1000,
+        getAttrs: (dom) => {
+          if (typeof dom === 'string') return {};
+          return {
+            href: (dom as HTMLElement).getAttribute('href'),
+            title: (dom as HTMLElement).textContent,
+          };
+        },
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'a',
+      mergeAttributes(HTMLAttributes, { class: 'smart-reference', target: '_self' }),
+      HTMLAttributes.title,
+    ];
+  },
+});
+
+const DateNode = Node.create({
+  name: 'dateNode',
+  group: 'inline',
+  inline: true,
+  selectable: true,
+  atom: true,
+
+  addAttributes() {
+    return {
+      date: { default: '' },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: 'span.date-badge',
+        getAttrs: (dom) => {
+          if (typeof dom === 'string') return {};
+          return {
+            date: (dom as HTMLElement).getAttribute('data-date'),
+          };
+        },
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'span',
+      mergeAttributes(HTMLAttributes, { 
+        class: 'date-badge', 
+        'data-date': HTMLAttributes.date,
+        style: 'display: inline-flex; align-items: center; gap: 4px; background-color: var(--n100); color: var(--n800); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; font-weight: 500; user-select: none;'
+      }),
+      `📅 ${HTMLAttributes.date}`,
+    ];
+  },
+});
+
 interface DocEditorProps {
   initialContent: string;
   onUpdate: (content: string) => void;
+  hideToolbar?: boolean;
+  borderless?: boolean;
+  onEditorReady?: (editor: any) => void;
+  onFocus?: (editor: any) => void;
 }
 
 const TocComponent = (props: any) => {
@@ -182,6 +265,68 @@ const SmartTabExtension = Extension.create({
   }
 });
 
+const getDisplayDate = (dateStr: string) => {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const MiniCalendar = ({ onSelect }: { onSelect: (date: string) => void }) => {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  
+  const getDaysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
+  const getFirstDayOfMonth = (y: number, m: number) => new Date(y, m, 1).getDay();
+
+  const daysInMonth = getDaysInMonth(year, month);
+  const firstDay = getFirstDayOfMonth(year, month);
+  
+  const days = [];
+  for (let i = 0; i < firstDay; i++) days.push(null);
+  for (let i = 1; i <= daysInMonth; i++) days.push(i);
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+  return (
+    <div style={{ padding: '8px', width: '250px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <button onClick={prevMonth} className="btn btn-ghost" style={{ padding: '4px' }}>&lt;</button>
+        <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</strong>
+        <button onClick={nextMonth} className="btn btn-ghost" style={{ padding: '4px' }}>&gt;</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d}>{d}</div>)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+        {days.map((day, i) => (
+          <div key={i} style={{ textAlign: 'center' }}>
+            {day ? (
+              <button 
+                onClick={() => {
+                  const d = new Date(year, month, day);
+                  const formatted = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                  onSelect(formatted);
+                }}
+                style={{ 
+                  width: '100%', padding: '6px 0', fontSize: '13px', 
+                  background: 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer',
+                  color: 'var(--text-primary)'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--n100)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                {day}
+              </button>
+            ) : <div />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const ReferenceModal = ({ 
   isOpen, 
   onClose, 
@@ -190,7 +335,7 @@ const ReferenceModal = ({
 }: { 
   isOpen: boolean, 
   onClose: () => void, 
-  type: 'task' | 'mindmap' | 'flowchart' | 'embed_mindmap' | 'embed_flowchart', 
+  type: 'task' | 'mindmap' | 'flowchart' | 'embed_mindmap' | 'embed_flowchart' | 'doc' | 'daily_note' | 'date_picker', 
   onSelect: (id: string, title: string) => void 
 }) => {
   const [search, setSearch] = useState('');
@@ -202,9 +347,15 @@ const ReferenceModal = ({
     } else if (type === 'mindmap' || type === 'embed_mindmap') {
       const maps = await db.mindMaps.toArray();
       return maps.filter(m => m.title.toLowerCase().includes(search.toLowerCase())).map(m => ({ id: m.id, title: m.title }));
-    } else {
+    } else if (type === 'flowchart' || type === 'embed_flowchart') {
       const flowcharts = await db.flowcharts.toArray();
       return flowcharts.filter(f => f.title.toLowerCase().includes(search.toLowerCase())).map(f => ({ id: f.id, title: f.title }));
+    } else if (type === 'doc') {
+      const docs = await db.docs.toArray();
+      return docs.filter(d => d.title.toLowerCase().includes(search.toLowerCase())).map(d => ({ id: d.id, title: d.title }));
+    } else if (type === 'daily_note') {
+      const notes = await db.dailyNotes.toArray();
+      return notes.filter(n => n.date.includes(search) || n.content.toLowerCase().includes(search.toLowerCase())).map(n => ({ id: n.date, title: getDisplayDate(n.date) }));
     }
   }, [type, search]);
 
@@ -220,16 +371,44 @@ const ReferenceModal = ({
         background: 'var(--n0)', borderRadius: '8px', padding: '16px', 
         width: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column'
       }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 16px 0' }}>{type.includes('embed') ? 'Embed' : 'Link to'} {type.includes('task') ? 'Task' : type.includes('mindmap') ? 'Mind Map' : 'Flowchart'}</h3>
-        <input 
-          autoFocus
-          placeholder="Search..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="input-field"
-          style={{ marginBottom: '16px' }}
-        />
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {type === 'date_picker' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <MiniCalendar 
+              onSelect={(dateStr) => {
+                const date = new Date(dateStr);
+                const userDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+                const formatted = userDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                onSelect('', formatted);
+                onClose();
+              }}
+            />
+          </div>
+        ) : (
+          <>
+            <h3 style={{ margin: '0 0 16px 0' }}>{type.includes('embed') ? 'Embed' : 'Link to'} {
+              type.includes('task') ? 'Task' : 
+              type.includes('mindmap') ? 'Mind Map' : 
+              type === 'doc' ? 'Document' :
+              type === 'daily_note' ? 'Daily Note' :
+              'Flowchart'
+            }</h3>
+            <input 
+              autoFocus
+              placeholder="Search..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') {
+                  onClose();
+                }
+              }}
+              className="input-field"
+              style={{ marginBottom: '16px' }}
+            />
+          </>
+        )}
+        {type !== 'date_picker' && (
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {items?.map(item => (
             <button
               key={item.id}
@@ -242,42 +421,68 @@ const ReferenceModal = ({
               }}
               className="dropdown-item"
             >
-              {type.includes('task') ? <CheckSquare size={16} color="var(--prio-medium)" /> : type.includes('mindmap') ? <Network size={16} color="var(--prio-high)" /> : <Share2 size={16} color="var(--prio-high)" />}
+              {type.includes('task') ? <CheckSquare size={16} color="var(--prio-medium)" /> : 
+               type.includes('mindmap') ? <Network size={16} color="var(--prio-high)" /> : 
+               type === 'doc' ? <FileText size={16} color="var(--prio-high)" /> :
+               type === 'daily_note' ? <CalendarDays size={16} color="var(--prio-medium)" /> :
+               <Share2 size={16} color="var(--prio-high)" />}
               {item.title}
             </button>
           ))}
-          {items?.length === 0 && <div style={{ padding: '8px', color: 'var(--n500)', fontSize: '14px' }}>No matches found.</div>}
-        </div>
+            {items?.length === 0 && <div style={{ padding: '8px', color: 'var(--n500)', fontSize: '14px' }}>No matches found.</div>}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-const MenuBar = ({ editor }: { editor: any }) => {
+export const MenuBar = ({ editor }: { editor: any }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [modalType, setModalType] = useState<'task' | 'mindmap' | 'flowchart' | 'embed_mindmap' | 'embed_flowchart' | null>(null);
+  const [modalType, setModalType] = useState<'task' | 'mindmap' | 'flowchart' | 'embed_mindmap' | 'embed_flowchart' | 'doc' | 'daily_note' | 'date_picker' | null>(null);
 
   // Close menus when clicking outside
   useEffect(() => {
-    const handleClickOutside = () => {
-      setIsMenuOpen(false);
-    };
+    const handleClickOutside = () => setIsMenuOpen(false);
     if (isMenuOpen) {
       document.addEventListener('click', handleClickOutside);
     }
-    return () => document.removeEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
   }, [isMenuOpen]);
 
+  // Listen for custom event to open reference modal from shortcuts
+  useEffect(() => {
+    const handleOpenModal = (e: any) => {
+      setModalType(e.detail.type);
+    };
+    window.addEventListener('open-reference-modal', handleOpenModal);
+    return () => window.removeEventListener('open-reference-modal', handleOpenModal);
+  }, []);
+
   const handleSelect = (id: string, title: string) => {
-    if (modalType?.startsWith('embed_')) {
+    if (modalType === 'date_picker') {
+      editor.chain().focus().insertContent({
+        type: 'dateNode',
+        attrs: { date: title }
+      }).insertContent(' ').run();
+    } else if (modalType?.startsWith('embed_')) {
       const diagramType = modalType === 'embed_mindmap' ? 'mindmap' : 'flowchart';
       editor.chain().focus().insertContent({
         type: 'embeddedDiagram',
         attrs: { diagramId: id, diagramType, title }
       }).run();
     } else {
-      const url = modalType === 'task' ? `#task-${id}` : modalType === 'mindmap' ? `#mindmap-${id}` : `#flowchart-${id}`;
-      editor.chain().focus().setLink({ href: url, target: '_self' }).insertContent(title).run();
+      const url = modalType === 'task' ? `#task-${id}` : 
+                  modalType === 'mindmap' ? `#mindmap-${id}` : 
+                  modalType === 'doc' ? `#doc-${id}` :
+                  modalType === 'daily_note' ? `#dailynote-${id}` :
+                  `#flowchart-${id}`;
+      editor.chain().focus().insertContent({
+        type: 'reference',
+        attrs: { href: url, title }
+      }).insertContent(' ').run();
     }
   };
 
@@ -435,6 +640,21 @@ const MenuBar = ({ editor }: { editor: any }) => {
               <Share2 size={16} /> Add reference to flowchart
             </button>
             <button 
+              onClick={(e) => { e.stopPropagation(); setModalType('doc'); setIsMenuOpen(false); }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              className="dropdown-item"
+            >
+              <FileText size={16} /> Add reference to document
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setModalType('daily_note'); setIsMenuOpen(false); }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              className="dropdown-item"
+            >
+              <CalendarDays size={16} /> Add reference to daily note
+            </button>
+            <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }} />
+            <button 
               onClick={(e) => { e.stopPropagation(); setModalType('embed_mindmap'); setIsMenuOpen(false); }}
               style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
               className="dropdown-item"
@@ -490,7 +710,7 @@ const toolbarBtnStyle = (isActive: boolean): React.CSSProperties => ({
   transition: 'all 0.1s'
 });
 
-export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) {
+export default function DocEditor({ initialContent, onUpdate, hideToolbar, borderless, onEditorReady, onFocus }: DocEditorProps) {
   const [showSearch, setShowSearch] = useState(false);
   
   const editor = useEditor({
@@ -498,12 +718,51 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
       SmartTabExtension,
       TocNode,
       EmbeddedDiagramNode,
+      ReferenceNode,
+      DateNode,
       StarterKit,
       TextStyle,
       Color,
       Highlight.configure({ multicolor: true }),
       MathExtension.configure({ evaluation: true }),
       SearchAndReplace.configure({ searchResultClass: 'search-result' }),
+      Extension.create({
+        name: 'customShortcuts',
+        addInputRules() {
+          const createModalRule = (trigger: RegExp, type: string) => {
+            return new InputRule({
+              find: trigger,
+              handler: ({ state, range, match }) => {
+                // We use setTimeout to ensure the transaction completes before opening the modal,
+                // preventing focus loss issues.
+                setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type } }));
+                }, 10);
+                
+                const fullMatch = match[0];
+                const spaceMatch = fullMatch.match(/^\s/);
+                // Delete the shortcut text, preserving any leading space
+                if (spaceMatch) {
+                  state.tr.delete(range.from + spaceMatch[0].length, range.to);
+                } else {
+                  state.tr.delete(range.from, range.to);
+                }
+              }
+            });
+          };
+
+          return [
+            createModalRule(/(?:^|\s)\/date$/, 'date_picker'),
+            createModalRule(/(?:^|\s)\/task$/, 'task'),
+            createModalRule(/(?:^|\s)\/docs$/, 'doc'),
+            createModalRule(/(?:^|\s)\/mindmap$/, 'mindmap'),
+            createModalRule(/(?:^|\s)\/flowchart$/, 'flowchart'),
+            createModalRule(/(?:^|\s)\/dailynotes$/, 'daily_note'),
+            createModalRule(/(?:^|\s)\/\/mindmap$/, 'embed_mindmap'),
+            createModalRule(/(?:^|\s)\/\/flowchart$/, 'embed_flowchart')
+          ];
+        }
+      }),
       ImageResize.configure({
         inline: false,
       }),
@@ -528,6 +787,9 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
     content: initialContent,
     onUpdate: ({ editor }) => {
       onUpdate(editor.getHTML());
+    },
+    onFocus: ({ editor }) => {
+      if (onFocus) onFocus(editor);
     },
     editorProps: {
       attributes: {
@@ -557,6 +819,16 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
             const flowchartId = href.replace('#flowchart-', '');
             window.location.hash = `#/flowchart?map=${flowchartId}`;
             return true;
+          } else if (href?.startsWith('#doc-')) {
+            event.preventDefault();
+            const docId = href.replace('#doc-', '');
+            window.location.hash = `#/docs?id=${docId}`;
+            return true;
+          } else if (href?.startsWith('#dailynote-')) {
+            event.preventDefault();
+            const dateStr = href.replace('#dailynote-', '');
+            window.location.hash = `#/daily-notes?date=${dateStr}`;
+            return true;
           }
         }
         return false;
@@ -564,11 +836,26 @@ export default function DocEditor({ initialContent, onUpdate }: DocEditorProps) 
     },
   });
 
+  useEffect(() => {
+    if (editor && onEditorReady) {
+      onEditorReady(editor);
+    }
+  }, [editor, onEditorReady]);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', border: '1px solid var(--border-color)', borderRadius: 'var(--radius)', overflow: 'hidden', backgroundColor: 'var(--n0)', boxShadow: 'var(--shadow-card)' }}>
-      <MenuBar editor={editor} />
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: borderless ? 'auto' : '100%', 
+      border: borderless ? 'none' : '1px solid var(--border-color)', 
+      borderRadius: borderless ? '0' : 'var(--radius)', 
+      overflow: borderless ? 'visible' : 'hidden', 
+      backgroundColor: 'var(--n0)', 
+      boxShadow: borderless ? 'none' : 'var(--shadow-card)' 
+    }}>
+      {!hideToolbar && <MenuBar editor={editor} />}
       <div 
-        style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', cursor: 'text', position: 'relative' }} 
+        style={{ flex: borderless ? 'none' : 1, overflowY: borderless ? 'visible' : 'auto', padding: borderless ? '0' : '32px 40px', cursor: 'text', position: 'relative' }} 
         className="tiptap-container"
         onClick={() => editor?.commands.focus()}
         onKeyDown={(e) => {
