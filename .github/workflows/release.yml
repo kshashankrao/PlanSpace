@@ -27,7 +27,7 @@ jobs:
         run: npm run build
 
       - name: Build Electron App
-        run: npx electron-builder build --win
+        run: npx electron-builder build --win --publish never
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
