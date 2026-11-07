@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
-import { PlusCircle, SquareCheckBig, PencilLine } from 'lucide-react';
+import { Plus, SquareCheckBig, PencilLine, CheckSquare } from 'lucide-react';
 import { db } from '../db/db';
 
 export default function MindMapNode({ id, data, selected }: NodeProps) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(Boolean(data.isNew || data.label === ''));
+  const [isHovered, setIsHovered] = useState(false);
   const [label, setLabel] = useState((data.label as string) || '');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -16,22 +17,15 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
   }, [data.label, isEditing]);
 
   useEffect(() => {
-    if (data.isNew) {
+    if (data.isNew || data.label === '') {
       setIsEditing(true);
     }
-  }, [data.isNew]);
+  }, [data.isNew, data.label]);
 
   useEffect(() => {
-    // Listen for custom edit event from the parent
     const handleEditStart = (e: any) => {
       if (e.detail.id === id) {
         setIsEditing(true);
-        setTimeout(() => {
-          if (inputRef.current) {
-            inputRef.current.focus();
-            inputRef.current.select();
-          }
-        }, 10);
       }
     };
     window.addEventListener('start-node-edit', handleEditStart);
@@ -40,48 +34,66 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus();
           inputRef.current.select();
         }
-      }, 50);
+      }, 20);
+      return () => clearTimeout(timer);
     }
   }, [isEditing]);
 
   const saveLabel = async () => {
     setIsEditing(false);
-    if (label.trim() !== data.label) {
-      // Update local db
-      await db.mindMapNodes.update(id, { label: label.trim() || 'New Node' });
-      // Trigger a refresh event for the parent to re-sync
+    const finalLabel = label.trim() || 'New Idea';
+    setLabel(finalLabel);
+    if (finalLabel !== data.label) {
+      await db.mindMapNodes.update(id, { label: finalLabel });
+      if (data.taskId) {
+        await db.tasks.update(data.taskId as string, { title: finalLabel, updatedAt: Date.now() });
+      }
       window.dispatchEvent(new CustomEvent('node-updated'));
-    } else {
-      setLabel(data.label as string);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      saveLabel();
-      e.stopPropagation(); // prevent adding a sibling while editing
-    } else if (e.key === 'Escape') {
-      setIsEditing(false);
-      setLabel(data.label as string);
+      e.preventDefault();
       e.stopPropagation();
+      await saveLabel();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      e.stopPropagation();
+      await saveLabel();
+      window.dispatchEvent(new CustomEvent('mindmap-add-child', { detail: { parentId: id } }));
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsEditing(false);
+      const fallback = (data.label as string)?.trim() || 'New Idea';
+      setLabel(fallback);
+      if (!data.label) {
+        await db.mindMapNodes.update(id, { label: fallback });
+      }
     }
   };
 
   const convertToTask = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (data.taskId) return; // already a task
+    if (data.taskId) return;
 
+    const activeSprint = await db.sprints.where('status').equals('active').first();
+    const taskTitle = label.trim() || 'New Idea';
     const newTask = {
       id: crypto.randomUUID(),
-      title: label,
-      description: '',
+      title: taskTitle,
+      description: 'Created from Mind Map node.',
       statusId: 'todo',
       priority: 'medium' as const,
+      sprintId: activeSprint?.id,
+      startDate: Date.now(),
+      duration: 2,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       order: 0,
@@ -89,34 +101,46 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
     };
 
     await db.tasks.add(newTask);
-    await db.mindMapNodes.update(id, { taskId: newTask.id });
+    await db.mindMapNodes.update(id, { taskId: newTask.id, label: taskTitle });
     window.dispatchEvent(new CustomEvent('node-updated'));
   };
 
   const openTask = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (data.taskId) {
-      db.tasks.get(data.taskId).then(task => {
+      db.tasks.get(data.taskId as string).then(task => {
         if (task) window.dispatchEvent(new CustomEvent('edit-task', { detail: task }));
       });
     }
   };
 
-  const isRoot = id.startsWith('root');
+  const handleQuickAddChild = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('mindmap-add-child', { detail: { parentId: id } }));
+  };
+
+  const isRoot = id.startsWith('root') || id === 'node-root';
+  const showActions = selected || isHovered;
 
   return (
-    <div 
-      style={{ 
-        padding: isRoot ? '12px 24px' : '8px 16px', 
-        background: selected ? 'var(--b50)' : 'var(--n0)', 
-        border: selected ? '2px solid var(--b400)' : '1px solid var(--n400)',
-        borderRadius: '50%',
-        boxShadow: selected ? '0 0 0 4px rgba(0, 82, 204, 0.1)' : 'var(--shadow-card)',
-        minWidth: isRoot ? '120px' : '80px',
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        padding: isRoot ? '12px 22px' : '9px 16px',
+        background: selected ? 'var(--b50)' : isRoot ? '#F0F6FF' : 'var(--n0)',
+        border: selected
+          ? '2px solid var(--b400)'
+          : isRoot
+            ? '2px solid var(--b300)'
+            : '1.5px solid var(--n200)',
+        borderRadius: isRoot ? '14px' : '24px',
+        boxShadow: selected ? '0 0 0 4px rgba(0, 82, 204, 0.14)' : 'var(--shadow-card)',
+        minWidth: isRoot ? '140px' : '100px',
         maxWidth: '300px',
         textAlign: 'center',
         position: 'relative',
-        transition: 'all 0.1s ease',
+        transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -128,101 +152,153 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
       }}
       className="mindmap-node"
     >
-      {!isRoot && (
-        <Handle 
-          type="target" 
-          position={Position.Left} 
-          style={{ 
-            background: 'transparent', 
-            width: '1px', 
-            height: '1px', 
-            border: 'none', 
-            left: 0
-          }} 
-        />
-      )}
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{
+          background: showActions ? 'var(--b400)' : 'var(--n200)',
+          width: '7px',
+          height: '7px',
+          border: '1.5px solid var(--n0)',
+          opacity: isRoot && !showActions ? 0 : 1,
+        }}
+      />
 
-      {/* Task Link Indicator */}
+      {/* Task Link Indicator or Quick Actions */}
       {data.taskId ? (
-        <div 
+        <button
+          type="button"
           onClick={openTask}
           title="Open Linked Task"
-          style={{ 
-            cursor: 'pointer', 
-            display: 'flex', 
-            alignItems: 'center', 
+          className="nodrag"
+          style={{
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
             justifyContent: 'center',
-            color: 'var(--b400)',
-            backgroundColor: 'var(--b50)',
-            borderRadius: '50%',
-            width: '18px',
-            height: '18px',
+            color: 'var(--b500)',
+            backgroundColor: 'var(--b100)',
+            border: 'none',
+            borderRadius: '6px',
+            padding: '2px 5px',
+            gap: '3px',
+            fontSize: '11px',
+            fontWeight: 600,
             flexShrink: 0
           }}
         >
-          <SquareCheckBig size={12} />
-        </div>
+          <SquareCheckBig size={12} /> Task
+        </button>
       ) : (
-        <div style={{ display: selected && !isEditing ? 'flex' : 'none', gap: '4px' }}>
-          <div 
-            onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
-            title="Edit Node"
-            className="convert-btn"
-            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--n100)', width: '18px', height: '18px' }}
-          >
-            <PencilLine size={12} />
+        showActions && !isEditing && (
+          <div className="nodrag" style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+              title="Rename (F2)"
+              style={{
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--n500)', background: 'transparent', border: 'none',
+                borderRadius: '4px', width: '20px', height: '20px', padding: 0
+              }}
+            >
+              <PencilLine size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={convertToTask}
+              title="Convert to Task"
+              style={{
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--b400)', background: 'transparent', border: 'none',
+                borderRadius: '4px', width: '20px', height: '20px', padding: 0
+              }}
+            >
+              <CheckSquare size={12} />
+            </button>
           </div>
-          <div 
-            onClick={convertToTask}
-            title="Convert to Task"
-            className="convert-btn"
-            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--n100)', width: '18px', height: '18px' }}
-          >
-            <PlusCircle size={12} />
-          </div>
-        </div>
+        )
       )}
-      
+
       {isEditing ? (
         <input
           ref={inputRef}
           className="nodrag nopan"
           value={label}
+          placeholder="Type idea..."
           onChange={(e) => setLabel(e.target.value)}
           onBlur={saveLabel}
           onKeyDown={handleKeyDown}
-          onMouseDown={(e) => e.stopPropagation()} // Prevent React Flow from stealing focus back
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             background: 'transparent',
             border: 'none',
             outline: 'none',
             textAlign: 'center',
-            width: `${Math.max(4, label.length)}ch`,
-            minWidth: '10px',
-            maxWidth: '100%',
+            width: `${Math.max(8, label.length + 2)}ch`,
+            minWidth: '80px',
+            maxWidth: '240px',
             fontFamily: 'inherit',
-            fontSize: isRoot ? '16px' : '14px',
+            fontSize: isRoot ? '15px' : '13.5px',
             fontWeight: isRoot ? 600 : 500,
             color: 'var(--n800)',
             padding: 0
           }}
         />
       ) : (
-        <div style={{ color: 'var(--n800)', fontSize: isRoot ? '16px' : '14px', fontWeight: isRoot ? 600 : 500, userSelect: 'none', wordWrap: 'break-word', flex: 1, minHeight: isRoot ? '24px' : '20px' }}>
-          {label || (isEditing ? '' : 'New Node')}
+        <div style={{
+          color: 'var(--n800)',
+          fontSize: isRoot ? '15px' : '13.5px',
+          fontWeight: isRoot ? 600 : 500,
+          userSelect: 'none',
+          wordBreak: 'break-word',
+          flex: 1,
+          lineHeight: 1.35
+        }}>
+          {label || 'New Idea'}
         </div>
       )}
 
-      <Handle 
-        type="source" 
-        position={Position.Right} 
+      {/* Quick-add Child (+) button on right side */}
+      {showActions && !isEditing && (
+        <button
+          type="button"
+          onClick={handleQuickAddChild}
+          title="Add Child Idea (Tab)"
+          className="nodrag"
+          style={{
+            position: 'absolute',
+            right: '-13px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: '22px',
+            height: '22px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--b400)',
+            color: 'white',
+            border: '2px solid var(--n0)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-card)',
+            zIndex: 5,
+            padding: 0
+          }}
+        >
+          <Plus size={12} />
+        </button>
+      )}
+
+      <Handle
+        type="source"
+        position={Position.Right}
         style={{
-          background: 'transparent', 
-          width: '1px', 
-          height: '1px', 
-          border: 'none', 
-          right: 0
-        }} 
+          background: showActions ? 'var(--b400)' : 'var(--n200)',
+          width: '7px',
+          height: '7px',
+          border: '1.5px solid var(--n0)',
+        }}
       />
     </div>
   );

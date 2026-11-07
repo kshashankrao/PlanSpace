@@ -11,6 +11,7 @@ import {
   ConnectionLineType,
   MarkerType,
 } from '@xyflow/react';
+import { useSearchParams } from 'react-router-dom';
 import type { Connection, Edge, Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -19,47 +20,27 @@ import { db } from '../db/db';
 import FlowchartNode from '../components/FlowchartNode';
 import FlowchartSidebar from '../components/FlowchartSidebar';
 import CreateFlowchartModal from '../components/CreateFlowchartModal';
-import { MoreHorizontal, Trash2, Edit2, AlignCenter, Download } from 'lucide-react';
+import SendDiagramModal from '../components/SendDiagramModal';
+import { getSmartHandles } from '../utils/layout';
+import { MoreHorizontal, Trash2, Edit2, AlignCenter, ArrowRightLeft, Download, Share2, Plus } from 'lucide-react';
 import { toPng } from 'html-to-image';
 
 const nodeTypes = { custom: FlowchartNode };
 
-// Determine which handles to use based on relative position
-function getSmartHandles(
-  sourcePos: { x: number; y: number },
-  targetPos: { x: number; y: number }
-): { sourceHandle: string; targetHandle: string } {
-  const dx = targetPos.x - sourcePos.x;
-  const dy = targetPos.y - sourcePos.y;
-
-  if (Math.abs(dx) > Math.abs(dy)) {
-    // Mostly horizontal
-    return dx > 0
-      ? { sourceHandle: 'right', targetHandle: 'left' }
-      : { sourceHandle: 'left', targetHandle: 'right' };
-  } else {
-    // Mostly vertical
-    return dy > 0
-      ? { sourceHandle: 'bottom', targetHandle: 'top' }
-      : { sourceHandle: 'top', targetHandle: 'bottom' };
-  }
-}
-
-// Approximate rendered height per shape (matches FlowchartNode.tsx container sizes)
-// Diamond: 100 * sqrt(2) ≈ 142px.  Others: minHeight 52 or 72.
 function getNodeHeight(shape: string): number {
   switch (shape) {
-    case 'diamond': return 142;
+    case 'diamond': return 148;
     case 'cylinder': return 72;
-    default: return 52; // rectangle, oval
+    default: return 54;
   }
 }
 
-// Vertical gap between bottom of one node and top of the next
-const NODE_MARGIN = 24;
+const NODE_MARGIN_Y = 36;
+const NODE_MARGIN_X = 210;
 
 function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const pendingSelectNodeIdRef = useRef<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { screenToFlowPosition, fitView } = useReactFlow();
@@ -81,8 +62,9 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     return () => window.removeEventListener('export-flowchart-png', handler);
   }, [handleDownloadImage]);
 
-  // Edge context menu state
+  // Edge context menu & label editing state
   const [edgeMenu, setEdgeMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
+  const [editingEdge, setEditingEdge] = useState<{ edgeId: string; label: string } | null>(null);
 
   const dbNodes = useLiveQuery(
     () => db.flowchartNodes.where('flowchartId').equals(flowchartId).toArray(),
@@ -96,33 +78,64 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
   // Sync DB → ReactFlow
   useEffect(() => {
     if (dbNodes) {
-      setNodes(dbNodes.map(n => ({
-        id: n.id,
-        type: 'custom',
-        position: n.position,
-        data: { label: n.label, shape: n.shape },
-      })));
+      const pendingId = pendingSelectNodeIdRef.current;
+      if (pendingId && dbNodes.some(n => n.id === pendingId)) {
+        pendingSelectNodeIdRef.current = null;
+      }
+
+      setNodes(nds => {
+        const selectedIds = pendingId
+          ? new Set([pendingId])
+          : new Set(nds.filter(n => n.selected).map(n => n.id));
+
+        return dbNodes.map(n => ({
+          id: n.id,
+          type: 'custom',
+          position: n.position,
+          data: {
+            label: n.label,
+            shape: n.shape,
+            taskId: n.taskId,
+            isNew: n.id === pendingId || n.label === '',
+          },
+          selected: selectedIds.has(n.id),
+        }));
+      });
     }
   }, [dbNodes, setNodes]);
 
   useEffect(() => {
-    if (dbEdges) {
-      setEdges(dbEdges.map(e => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        sourceHandle: e.sourceHandle ?? null,
-        targetHandle: e.targetHandle ?? null,
-        type: 'straight',
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-        markerStart: (e as any).markerStart === 'arrow' ? { type: MarkerType.ArrowClosed, width: 14, height: 14 } : undefined,
-        style: { stroke: 'var(--n500)', strokeWidth: 1.5 },
-        label: e.label,
-      })));
+    if (dbEdges && dbNodes) {
+      const nodeMap = new Map(dbNodes.map(n => [n.id, n]));
+      setEdges(dbEdges.map(e => {
+        const srcNode = nodeMap.get(e.source);
+        const tgtNode = nodeMap.get(e.target);
+        const computedHandles = srcNode && tgtNode
+          ? getSmartHandles(srcNode.position, tgtNode.position)
+          : { sourceHandle: 'bottom', targetHandle: 'top' };
+
+        return {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle ?? computedHandles.sourceHandle,
+          targetHandle: e.targetHandle ?? computedHandles.targetHandle,
+          type: 'smoothstep',
+          markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
+          markerStart: (e as any).markerStart === 'arrow' ? { type: MarkerType.ArrowClosed, width: 14, height: 14 } : undefined,
+          style: { stroke: 'var(--n600)', strokeWidth: 1.5 },
+          label: e.label,
+          labelStyle: { fill: 'var(--n800)', fontWeight: 600, fontSize: 12 },
+          labelBgStyle: { fill: 'var(--n0)', fillOpacity: 0.9 },
+          labelBgPadding: [6, 3] as [number, number],
+          labelBgBorderRadius: 4,
+        };
+      }));
     }
-  }, [dbEdges, setEdges]);
+  }, [dbEdges, dbNodes, setEdges]);
 
   const onConnect = useCallback(async (params: Connection | Edge) => {
+    if (!params.source || !params.target || params.source === params.target) return;
     const newEdgeId = `e-${params.source}-${params.target}-${Date.now()}`;
     await db.flowchartEdges.add({
       id: newEdgeId,
@@ -149,10 +162,14 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
 
     const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
     const newNodeId = crypto.randomUUID();
+    pendingSelectNodeIdRef.current = newNodeId;
 
     await db.flowchartNodes.add({
-      id: newNodeId, flowchartId,
-      label: '', shape: shape as any, position
+      id: newNodeId,
+      flowchartId,
+      label: '',
+      shape: shape as any,
+      position,
     });
 
     setTimeout(() => {
@@ -160,28 +177,53 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     }, 50);
   }, [screenToFlowPosition, flowchartId]);
 
-  // Double-click palette: auto-place below bottommost and connect
-  const handleDoubleClickShape = useCallback(async (shape: string) => {
-    let targetY = 100, targetX = 200, sourceNodeId: string | null = null;
+  // Add connected shape after the currently selected node (or last node)
+  const handleAddShape = useCallback(async (shape: string, explicitSourceId?: string) => {
+    let targetX = 160;
+    let targetY = 140;
+    let sourceNode: NonNullable<typeof dbNodes>[0] | undefined;
 
     if (dbNodes && dbNodes.length > 0) {
-      const bottomMost = dbNodes.reduce((p, c) => p.position.y > c.position.y ? p : c);
-      const srcHeight = getNodeHeight(bottomMost.shape as string);
-      targetX = bottomMost.position.x;
-      targetY = bottomMost.position.y + srcHeight + NODE_MARGIN;
-      sourceNodeId = bottomMost.id;
+      const selectedNodeId = explicitSourceId || nodes.find(n => n.selected)?.id;
+      sourceNode = (selectedNodeId ? dbNodes.find(n => n.id === selectedNodeId) : undefined)
+        || dbNodes.reduce((p, c) => (c.position.x + c.position.y > p.position.x + p.position.y ? c : p));
+
+      if (sourceNode) {
+        // Detect whether the chart around sourceNode flows horizontally or vertically
+        const incomingEdge = dbEdges?.find(e => e.target === sourceNode!.id);
+        const parentNode = incomingEdge ? dbNodes.find(n => n.id === incomingEdge.source) : undefined;
+        const flowsHorizontally = parentNode
+          ? Math.abs(sourceNode.position.x - parentNode.position.x) > Math.abs(sourceNode.position.y - parentNode.position.y)
+          : dbNodes.length >= 2 && Math.abs(dbNodes[1].position.x - dbNodes[0].position.x) > Math.abs(dbNodes[1].position.y - dbNodes[0].position.y);
+
+        if (flowsHorizontally) {
+          targetX = sourceNode.position.x + NODE_MARGIN_X;
+          targetY = sourceNode.position.y;
+        } else {
+          const srcHeight = getNodeHeight(sourceNode.shape as string);
+          targetX = sourceNode.position.x;
+          targetY = sourceNode.position.y + srcHeight + NODE_MARGIN_Y;
+        }
+      }
     }
 
     const newNodeId = crypto.randomUUID();
-    await db.flowchartNodes.add({ id: newNodeId, flowchartId, label: '', shape: shape as any, position: { x: targetX, y: targetY } });
+    pendingSelectNodeIdRef.current = newNodeId;
 
-    if (sourceNodeId && dbNodes) {
-      const src = dbNodes.find(n => n.id === sourceNodeId)!;
-      const handles = getSmartHandles(src.position, { x: targetX, y: targetY });
+    await db.flowchartNodes.add({
+      id: newNodeId,
+      flowchartId,
+      label: '',
+      shape: shape as any,
+      position: { x: targetX, y: targetY },
+    });
+
+    if (sourceNode) {
+      const handles = getSmartHandles(sourceNode.position, { x: targetX, y: targetY });
       await db.flowchartEdges.add({
-        id: `e-${sourceNodeId}-${newNodeId}-${Date.now()}`,
+        id: `e-${sourceNode.id}-${newNodeId}-${Date.now()}`,
         flowchartId,
-        source: sourceNodeId,
+        source: sourceNode.id,
         target: newNodeId,
         ...handles,
       });
@@ -190,52 +232,119 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('start-flowchart-node-edit', { detail: { id: newNodeId } }));
     }, 50);
-  }, [flowchartId, dbNodes]);
+  }, [flowchartId, dbNodes, dbEdges, nodes]);
 
-  // On drag stop: persist position + smart auto-connect if close to another node
-  const onNodeDragStop = useCallback(async (_: any, node: Node) => {
-    await db.flowchartNodes.update(node.id, { position: node.position });
+  useEffect(() => {
+    const handler = (e: any) => {
+      handleAddShape('rectangle', e.detail?.sourceId);
+    };
+    window.addEventListener('flowchart-add-next', handler);
+    return () => window.removeEventListener('flowchart-add-next', handler);
+  }, [handleAddShape]);
 
-    if (dbNodes) {
-      const SNAP_DIST = 100;
-      let closest: typeof dbNodes[0] | null = null;
-      let minDist = Infinity;
+  // Live 60fps handle switching while dragging a node
+  const onNodeDrag = useCallback((_event: any, node: Node) => {
+    setEdges(currEdges =>
+      currEdges.map(edge => {
+        if (edge.source !== node.id && edge.target !== node.id) return edge;
+        const srcNode = edge.source === node.id ? node : nodes.find(n => n.id === edge.source);
+        const tgtNode = edge.target === node.id ? node : nodes.find(n => n.id === edge.target);
+        if (!srcNode || !tgtNode) return edge;
+        const handles = getSmartHandles(srcNode.position, tgtNode.position);
+        if (edge.sourceHandle === handles.sourceHandle && edge.targetHandle === handles.targetHandle) {
+          return edge;
+        }
+        return { ...edge, ...handles };
+      })
+    );
+  }, [nodes, setEdges]);
 
-      for (const n of dbNodes) {
-        if (n.id === node.id) continue;
-        const dx = node.position.x - n.position.x;
-        const dy = node.position.y - n.position.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < minDist && dist < SNAP_DIST) { minDist = dist; closest = n; }
-      }
+  // On drag stop: persist position and connected edge handles in a single DB transaction
+  const onNodeDragStop = useCallback(async (event: any, node: Node) => {
+    await db.transaction('rw', [db.flowchartNodes, db.flowchartEdges], async () => {
+      await db.flowchartNodes.update(node.id, { position: node.position });
 
-      if (closest) {
-        const alreadyConnected = dbEdges?.some(e =>
-          (e.source === node.id && e.target === closest!.id) ||
-          (e.source === closest!.id && e.target === node.id)
-        );
+      if (dbNodes && dbEdges) {
+        const nodeMap = new Map(dbNodes.map(n => [n.id, n.id === node.id ? { ...n, position: node.position } : n]));
+        for (const edge of dbEdges) {
+          if (edge.source === node.id || edge.target === node.id) {
+            const src = nodeMap.get(edge.source);
+            const tgt = nodeMap.get(edge.target);
+            if (src && tgt) {
+              const handles = getSmartHandles(src.position, tgt.position);
+              await db.flowchartEdges.update(edge.id, handles);
+            }
+          }
+        }
 
-        if (!alreadyConnected) {
-          // Determine source/target based on which is "earlier" (top/left)
-          const nodeIsAfter =
-            node.position.y > closest.position.y ||
-            (Math.abs(node.position.y - closest.position.y) < 40 && node.position.x > closest.position.x);
+        // Only auto-connect by proximity if user explicitly holds Alt while dragging
+        if (event.altKey) {
+          const SNAP_DIST = 110;
+          let closest: typeof dbNodes[0] | null = null;
+          let minDist = Infinity;
 
-          const source = nodeIsAfter ? closest.id : node.id;
-          const target = nodeIsAfter ? node.id : closest.id;
-          const srcPos = nodeIsAfter ? closest.position : node.position;
-          const tgtPos = nodeIsAfter ? node.position : closest.position;
-          const handles = getSmartHandles(srcPos, tgtPos);
+          for (const n of dbNodes) {
+            if (n.id === node.id) continue;
+            const dx = node.position.x - n.position.x;
+            const dy = node.position.y - n.position.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < minDist && dist < SNAP_DIST) { minDist = dist; closest = n; }
+          }
 
-          await db.flowchartEdges.add({
-            id: `e-${source}-${target}-${Date.now()}`,
-            flowchartId,
-            source, target, ...handles,
-          });
+          if (closest) {
+            const alreadyConnected = dbEdges.some(e =>
+              (e.source === node.id && e.target === closest!.id) ||
+              (e.source === closest!.id && e.target === node.id)
+            );
+            if (!alreadyConnected) {
+              const handles = getSmartHandles(closest.position, node.position);
+              await db.flowchartEdges.add({
+                id: `e-${closest.id}-${node.id}-${Date.now()}`,
+                flowchartId,
+                source: closest.id,
+                target: node.id,
+                ...handles,
+              });
+            }
+          }
         }
       }
-    }
+    });
   }, [flowchartId, dbNodes, dbEdges]);
+
+  // Double-clicking empty canvas creates a step right at the cursor
+  const handlePaneDoubleClick = useCallback(async (event: React.MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (!target.classList.contains('react-flow__pane')) return;
+    const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    const newNodeId = crypto.randomUUID();
+    pendingSelectNodeIdRef.current = newNodeId;
+
+    const selectedNode = nodes.find(n => n.selected);
+    await db.transaction('rw', [db.flowchartNodes, db.flowchartEdges], async () => {
+      await db.flowchartNodes.add({
+        id: newNodeId,
+        flowchartId,
+        label: '',
+        shape: 'rectangle',
+        position,
+      });
+      if (selectedNode) {
+        const handles = getSmartHandles(selectedNode.position, position);
+        await db.flowchartEdges.add({
+          id: `e-${selectedNode.id}-${newNodeId}`,
+          flowchartId,
+          source: selectedNode.id,
+          target: newNodeId,
+          ...handles,
+        });
+      }
+    });
+
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('start-flowchart-node-edit', { detail: { id: newNodeId } }));
+    }, 40);
+  }, [screenToFlowPosition, flowchartId, nodes]);
 
   const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
     const ids = deletedNodes.map(n => n.id);
@@ -250,30 +359,48 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     await db.flowchartEdges.bulkDelete(deletedEdges.map(e => e.id));
   }, []);
 
-  // Edge right-click context menu
   const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
     event.preventDefault();
     setEdgeMenu({ edgeId: edge.id, x: event.clientX, y: event.clientY });
   }, []);
 
+  const onEdgeDoubleClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.stopPropagation();
+    const dbEdge = dbEdges?.find(e => e.id === edge.id);
+    setEditingEdge({ edgeId: edge.id, label: dbEdge?.label || '' });
+  }, [dbEdges]);
+
+  const handleSaveEdgeLabel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEdge) return;
+    await db.flowchartEdges.update(editingEdge.edgeId, {
+      label: editingEdge.label.trim() || undefined,
+    });
+    setEditingEdge(null);
+  };
+
   const handleReverseEdge = useCallback(async () => {
     if (!edgeMenu) return;
     const dbEdge = dbEdges?.find(e => e.id === edgeMenu.edgeId);
     if (!dbEdge) return;
+    const srcNode = dbNodes?.find(n => n.id === dbEdge.target);
+    const tgtNode = dbNodes?.find(n => n.id === dbEdge.source);
+    const handles = srcNode && tgtNode
+      ? getSmartHandles(srcNode.position, tgtNode.position)
+      : { sourceHandle: dbEdge.targetHandle, targetHandle: dbEdge.sourceHandle };
+
     await db.flowchartEdges.update(edgeMenu.edgeId, {
       source: dbEdge.target,
       target: dbEdge.source,
-      sourceHandle: dbEdge.targetHandle,
-      targetHandle: dbEdge.sourceHandle,
+      ...handles,
     });
     setEdgeMenu(null);
-  }, [edgeMenu, dbEdges]);
+  }, [edgeMenu, dbEdges, dbNodes]);
 
   const handleDoubleArrow = useCallback(async () => {
     if (!edgeMenu) return;
     const dbEdge = dbEdges?.find(e => e.id === edgeMenu.edgeId);
     if (!dbEdge) return;
-    // Toggle: if already has markerStart (double arrow), remove it; otherwise add it
     const hasDouble = (dbEdge as any).markerStart !== undefined;
     if (hasDouble) {
       await db.flowchartEdges.update(edgeMenu.edgeId, { markerStart: undefined } as any);
@@ -289,12 +416,10 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
     setEdgeMenu(null);
   }, [edgeMenu]);
 
-  // Auto-layout: for each connected chain, straighten nodes and equalize spacing.
-  // Disconnected (isolated) nodes are NOT moved.
-  const handleAutoLayout = useCallback(async () => {
+  // Auto-layout supporting both Horizontal (LR) and Vertical (TB) directions + updating edge handles
+  const handleAutoLayout = useCallback(async (direction: 'TB' | 'LR') => {
     if (!dbNodes || !dbEdges || dbNodes.length === 0) return;
 
-    // Build adjacency sets (undirected, for component detection)
     const neighbors = new Map<string, Set<string>>();
     for (const n of dbNodes) neighbors.set(n.id, new Set());
     for (const e of dbEdges) {
@@ -302,7 +427,6 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
       neighbors.get(e.target)?.add(e.source);
     }
 
-    // BFS to find connected components
     const visited = new Set<string>();
     const components: string[][] = [];
     for (const n of dbNodes) {
@@ -321,14 +445,11 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
       components.push(component);
     }
 
-    // For each component with 2+ nodes: topological BFS layout
-    // Gap = height of previous node + fixed margin between visual edges
-    const updates: { id: string; position: { x: number; y: number } }[] = [];
+    const posMap = new Map<string, { x: number; y: number }>();
 
     for (const component of components) {
-      if (component.length < 2) continue; // leave isolated nodes untouched
+      if (component.length < 2) continue;
 
-      // Build directed edges within component
       const compSet = new Set(component);
       const inDegree = new Map<string, number>();
       const children = new Map<string, string[]>();
@@ -340,88 +461,106 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
         children.get(e.source)?.push(e.target);
       }
 
-      // Find root(s): nodes with no incoming edges in this component
       const roots = component.filter(id => (inDegree.get(id) ?? 0) === 0);
-      // If it's a cycle (no roots), pick the first node as root
       const startNodes = roots.length > 0 ? roots : [component[0]];
 
-      // Anchor: use the root's current X, but normalize it to a clean center.
-      // We keep the root's Y so the chain doesn't jump vertically.
       const anchorNode = dbNodes.find(n => n.id === startNodes[0]);
-      const anchorX = anchorNode?.position.x ?? 200;
-      const anchorY = anchorNode?.position.y ?? 100;
+      const anchorX = anchorNode?.position.x ?? 120;
+      const anchorY = anchorNode?.position.y ?? 120;
 
       const levelVisited = new Set<string>();
-      const posMap = new Map<string, { x: number; y: number }>();
-      // queue items: the node to place, its branchX, and the Y-bottom of its parent
-      const levelQueue: { id: string; branchX: number; parentBottom: number }[] = [];
 
-      // Seed root nodes — place them at anchorY and compute their own bottoms
-      for (let ri = 0; ri < startNodes.length; ri++) {
-        const rootId = startNodes[ri];
-        const rootBranchX = anchorX + ri * 200;
-        const rootH = getNodeHeight((dbNodes.find(n => n.id === rootId)?.shape as string) ?? 'rectangle');
-        posMap.set(rootId, { x: rootBranchX, y: anchorY });
-        levelVisited.add(rootId);
-        const rootBottom = anchorY + rootH;
-        // Enqueue root's children
-        const kids = (children.get(rootId) ?? []).filter(k => !levelVisited.has(k));
-        kids.forEach((kid, i) => {
-          levelVisited.add(kid);
-          const kidX = kids.length > 1 ? rootBranchX + (i - (kids.length - 1) / 2) * 200 : rootBranchX;
-          levelQueue.push({ id: kid, branchX: kidX, parentBottom: rootBottom });
-        });
-      }
+      if (direction === 'TB') {
+        const levelQueue: { id: string; branchX: number; parentBottom: number }[] = [];
+        for (let ri = 0; ri < startNodes.length; ri++) {
+          const rootId = startNodes[ri];
+          const rootBranchX = anchorX + ri * 220;
+          const rootH = getNodeHeight((dbNodes.find(n => n.id === rootId)?.shape as string) ?? 'rectangle');
+          posMap.set(rootId, { x: rootBranchX, y: anchorY });
+          levelVisited.add(rootId);
+          const rootBottom = anchorY + rootH;
+          const kids = (children.get(rootId) ?? []).filter(k => !levelVisited.has(k));
+          kids.forEach((kid, i) => {
+            levelVisited.add(kid);
+            const kidX = kids.length > 1 ? rootBranchX + (i - (kids.length - 1) / 2) * 220 : rootBranchX;
+            levelQueue.push({ id: kid, branchX: kidX, parentBottom: rootBottom });
+          });
+        }
 
-      while (levelQueue.length) {
-        const { id, branchX, parentBottom } = levelQueue.shift()!;
-        const thisH = getNodeHeight((dbNodes.find(n => n.id === id)?.shape as string) ?? 'rectangle');
-        const y = parentBottom + NODE_MARGIN;
-        posMap.set(id, { x: branchX, y });
-        const myBottom = y + thisH;
+        while (levelQueue.length) {
+          const { id, branchX, parentBottom } = levelQueue.shift()!;
+          const thisH = getNodeHeight((dbNodes.find(n => n.id === id)?.shape as string) ?? 'rectangle');
+          const y = parentBottom + NODE_MARGIN_Y;
+          posMap.set(id, { x: branchX, y });
+          const myBottom = y + thisH;
 
-        const kids = (children.get(id) ?? []).filter(k => !levelVisited.has(k));
-        kids.forEach((kid, i) => {
-          levelVisited.add(kid);
-          const kidX = kids.length > 1 ? branchX + (i - (kids.length - 1) / 2) * 200 : branchX;
-          levelQueue.push({ id: kid, branchX: kidX, parentBottom: myBottom });
-        });
-      }
+          const kids = (children.get(id) ?? []).filter(k => !levelVisited.has(k));
+          kids.forEach((kid, i) => {
+            levelVisited.add(kid);
+            const kidX = kids.length > 1 ? branchX + (i - (kids.length - 1) / 2) * 220 : branchX;
+            levelQueue.push({ id: kid, branchX: kidX, parentBottom: myBottom });
+          });
+        }
+      } else {
+        // Horizontal (LR) layout
+        const levelQueue: { id: string; parentX: number; branchY: number }[] = [];
+        for (let ri = 0; ri < startNodes.length; ri++) {
+          const rootId = startNodes[ri];
+          const rootBranchY = anchorY + ri * 140;
+          posMap.set(rootId, { x: anchorX, y: rootBranchY });
+          levelVisited.add(rootId);
+          const kids = (children.get(rootId) ?? []).filter(k => !levelVisited.has(k));
+          kids.forEach((kid, i) => {
+            levelVisited.add(kid);
+            const kidY = kids.length > 1 ? rootBranchY + (i - (kids.length - 1) / 2) * 140 : rootBranchY;
+            levelQueue.push({ id: kid, parentX: anchorX, branchY: kidY });
+          });
+        }
 
-      // Queue updates for nodes in this component
-      for (const [id, pos] of posMap) {
-        updates.push({ id, position: pos });
+        while (levelQueue.length) {
+          const { id, parentX, branchY } = levelQueue.shift()!;
+          const x = parentX + NODE_MARGIN_X;
+          posMap.set(id, { x, y: branchY });
+
+          const kids = (children.get(id) ?? []).filter(k => !levelVisited.has(k));
+          kids.forEach((kid, i) => {
+            levelVisited.add(kid);
+            const kidY = kids.length > 1 ? branchY + (i - (kids.length - 1) / 2) * 140 : branchY;
+            levelQueue.push({ id: kid, parentX: x, branchY: kidY });
+          });
+        }
       }
     }
 
-    for (const u of updates) {
-      await db.flowchartNodes.update(u.id, { position: u.position });
+    for (const [id, pos] of posMap) {
+      await db.flowchartNodes.update(id, { position: pos });
     }
-    setTimeout(() => fitView({ duration: 400, padding: 0.25 }), 100);
+
+    // Update all edge handles to match the new node positions
+    for (const e of dbEdges) {
+      const srcPos = posMap.get(e.source) ?? dbNodes.find(n => n.id === e.source)?.position;
+      const tgtPos = posMap.get(e.target) ?? dbNodes.find(n => n.id === e.target)?.position;
+      if (srcPos && tgtPos) {
+        const handles = getSmartHandles(srcPos, tgtPos);
+        await db.flowchartEdges.update(e.id, handles);
+      }
+    }
+
+    setTimeout(() => fitView({ duration: 400, padding: 0.25, maxZoom: 0.85 }), 100);
   }, [dbNodes, dbEdges, fitView]);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      handleAutoLayout(e.detail?.direction || 'LR');
+    };
+    window.addEventListener('flowchart-auto-layout', handler);
+    return () => window.removeEventListener('flowchart-auto-layout', handler);
+  }, [handleAutoLayout]);
 
   return (
     <div style={{ display: 'flex', width: '100%', height: '100%' }}>
-      <FlowchartSidebar onDoubleClickShape={handleDoubleClickShape} />
-      <div style={{ flex: 1, position: 'relative' }} ref={reactFlowWrapper}>
-        <button
-          onClick={handleAutoLayout}
-          title="Auto-align nodes vertically"
-          style={{
-            position: 'absolute', top: '12px', right: '12px', zIndex: 10,
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '6px 12px', fontSize: '13px', fontWeight: 500,
-            backgroundColor: 'var(--n0)', border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius)', cursor: 'pointer', color: 'var(--n700)',
-            boxShadow: 'var(--shadow-card)',
-          }}
-          onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')}
-          onMouseOut={e => (e.currentTarget.style.backgroundColor = 'var(--n0)')}
-        >
-          <AlignCenter size={14} />
-          Auto-layout
-        </button>
-
+      <FlowchartSidebar onAddShape={(shape) => handleAddShape(shape)} />
+      <div style={{ flex: 1, position: 'relative' }} ref={reactFlowWrapper} onDoubleClick={handlePaneDoubleClick}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -430,25 +569,26 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
           onConnect={onConnect}
           onDrop={onDrop}
           onDragOver={onDragOver}
+          onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
           onEdgeContextMenu={onEdgeContextMenu}
+          onEdgeDoubleClick={onEdgeDoubleClick}
           onPaneClick={() => setEdgeMenu(null)}
           nodeTypes={nodeTypes}
-          defaultViewport={{ x: 0, y: 0, zoom: 0.45 }}
+          defaultViewport={{ x: 0, y: 0, zoom: 0.75 }}
           fitView
-          fitViewOptions={{ maxZoom: 0.55, padding: 0.3 }}
+          fitViewOptions={{ maxZoom: 0.85, padding: 0.25 }}
+          zoomOnDoubleClick={false}
           deleteKeyCode={['Backspace', 'Delete']}
           multiSelectionKeyCode={['Shift']}
-          selectionOnDrag
-          panOnDrag={[1, 2]}
           defaultEdgeOptions={{
-            type: 'straight',
+            type: 'smoothstep',
             markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-            style: { stroke: 'var(--n500)', strokeWidth: 1.5 },
+            style: { stroke: 'var(--n600)', strokeWidth: 1.5 },
           }}
-          connectionLineType={ConnectionLineType.Straight}
+          connectionLineType={ConnectionLineType.SmoothStep}
           nodesDraggable
         >
           <Background gap={20} size={1.5} color="var(--n40)" />
@@ -473,10 +613,22 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
               border: '1px solid var(--border-color)',
               borderRadius: 'var(--radius)',
               boxShadow: 'var(--shadow-dropdown)',
-              minWidth: '170px',
+              minWidth: '180px',
               overflow: 'hidden',
             }}>
-              <div style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Arrow Options</div>
+              <div style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Connector Options</div>
+              <button
+                onClick={() => {
+                  const dbEdge = dbEdges?.find(e => e.id === edgeMenu.edgeId);
+                  setEditingEdge({ edgeId: edgeMenu.edgeId, label: dbEdge?.label || '' });
+                  setEdgeMenu(null);
+                }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }}
+                onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')}
+                onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                ✏️ Edit Label (Yes/No)
+              </button>
               <button
                 onClick={handleReverseEdge}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }}
@@ -496,15 +648,42 @@ function FlowchartCanvas({ flowchartId }: { flowchartId: string }) {
               <div style={{ borderTop: '1px solid var(--border-color)' }}>
                 <button
                   onClick={handleDeleteEdge}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--r400)', fontSize: '14px', textAlign: 'left' }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--r500)', fontSize: '14px', textAlign: 'left' }}
                   onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')}
                   onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
-                  🗑 Delete Arrow
+                  🗑 Delete Connector
                 </button>
               </div>
             </div>
           </>
+        )}
+
+        {/* Edge Label Modal */}
+        {editingEdge && (
+          <div
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(9,30,66,0.4)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={() => setEditingEdge(null)}
+          >
+            <form
+              onSubmit={handleSaveEdgeLabel}
+              onClick={e => e.stopPropagation()}
+              style={{ backgroundColor: 'var(--n0)', padding: '20px', borderRadius: 'var(--radius)', width: '320px', boxShadow: 'var(--shadow-modal)', display: 'flex', flexDirection: 'column', gap: '12px' }}
+            >
+              <h3 style={{ margin: 0, fontSize: '15px', color: 'var(--n800)', textTransform: 'none' }}>Connector Label</h3>
+              <input
+                autoFocus
+                value={editingEdge.label}
+                onChange={e => setEditingEdge({ ...editingEdge, label: e.target.value })}
+                placeholder="e.g. Yes, No, Approved..."
+                style={{ padding: '8px 10px', width: '100%' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" onClick={() => setEditingEdge(null)} className="btn btn-ghost">Cancel</button>
+                <button type="submit" className="btn btn-primary">Save</button>
+              </div>
+            </form>
+          </div>
         )}
       </div>
     </div>
@@ -515,23 +694,27 @@ export default function Flowchart() {
   const [activeView, setActiveView] = useState<'canvas' | 'list'>('canvas');
   const [activeFlowchartId, setActiveFlowchartId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSendingDiagram, setIsSendingDiagram] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showMenu, setShowMenu] = useState(false);
+  const [searchParams] = useSearchParams();
+  const mapParam = searchParams.get('map');
 
   const flowcharts = useLiveQuery(() => db.flowcharts.orderBy('createdAt').reverse().toArray());
 
-  // Auto-select the most recent flowchart
+  // Respect ?map= query param or auto-select the most recent flowchart
   useEffect(() => {
-    if (flowcharts && flowcharts.length > 0 && !activeFlowchartId) {
+    if (mapParam && flowcharts?.some(f => f.id === mapParam)) {
+      setActiveFlowchartId(mapParam);
+      setActiveView('canvas');
+    } else if (flowcharts && flowcharts.length > 0 && !activeFlowchartId) {
       setActiveFlowchartId(flowcharts[0].id);
     } else if (flowcharts && flowcharts.length === 0) {
-      // Bootstrap a default flowchart on first launch
       const newId = crypto.randomUUID();
       db.flowcharts.add({ id: newId, title: 'Main Flowchart', createdAt: Date.now(), updatedAt: Date.now() })
         .then(() => setActiveFlowchartId(newId));
     }
-  }, [flowcharts, activeFlowchartId]);
+  }, [flowcharts, activeFlowchartId, mapParam]);
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -548,77 +731,137 @@ export default function Flowchart() {
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-board)' }}>
 
-      {/* Header */}
-      <div style={{ padding: '32px 40px 0 40px', backgroundColor: 'var(--n0)', borderBottom: '1px solid var(--border-color)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
-              <div style={{ width: '24px', height: '24px', backgroundColor: 'var(--prio-medium)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '10px' }}>PS</div>
-              <h1 style={{ fontSize: '24px', margin: 0, padding: 0 }}>
-                {activeView === 'canvas' && activeFlowchart ? activeFlowchart.title : 'Flowcharts'}
-              </h1>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: '24px', alignItems: 'center', paddingBottom: '12px' }}>
-          <button
-            onClick={() => setActiveView('canvas')}
-            className={`planning-tab ${activeView === 'canvas' ? 'active' : ''}`}
-            style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontFamily: 'inherit', fontSize: 'inherit', padding: 0 }}
-          >
-            Canvas
-          </button>
-          <button
-            onClick={() => setActiveView('list')}
-            className={`planning-tab ${activeView === 'list' ? 'active' : ''}`}
-            style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, fontFamily: 'inherit', fontSize: 'inherit', padding: 0 }}
-          >
-            All Flowcharts
-          </button>
-
-          <div style={{ position: 'relative' }}>
-            <button 
-              onClick={() => setShowMenu(!showMenu)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n400)', display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px' }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--n30)'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      {/* Unified Single-Row Header */}
+      <div
+        style={{
+          padding: '0 28px',
+          height: '54px',
+          backgroundColor: 'var(--n0)',
+          borderBottom: '1px solid var(--border-color)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '16px',
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', height: '100%' }}>
+          {activeView === 'canvas' && activeFlowchart && flowcharts ? (
+            <select
+              value={activeFlowchart.id}
+              onChange={(e) => {
+                setActiveFlowchartId(e.target.value);
+                setActiveView('canvas');
+              }}
+              style={{
+                fontSize: '16px',
+                fontWeight: 700,
+                color: 'var(--n800)',
+                backgroundColor: 'transparent',
+                border: '1px solid transparent',
+                borderRadius: '6px',
+                padding: '4px 8px',
+                cursor: 'pointer',
+              }}
+              title="Switch Flowchart"
             >
-              <MoreHorizontal size={20} />
+              {flowcharts.map(f => (
+                <option key={f.id} value={f.id}>{f.title}</option>
+              ))}
+            </select>
+          ) : (
+            <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, padding: 0, color: 'var(--n800)' }}>
+              Flowcharts
+            </h1>
+          )}
+
+          <div style={{ height: '20px', width: '1px', backgroundColor: 'var(--border-color)' }} />
+
+          <div style={{ display: 'flex', gap: '20px', height: '100%', alignItems: 'center' }}>
+            <button
+              onClick={() => setActiveView('canvas')}
+              className={`planning-tab ${activeView === 'canvas' ? 'active' : ''}`}
+              style={{
+                padding: '16px 4px',
+                color: 'var(--text-secondary)',
+                background: 'none',
+                border: 'none',
+                borderBottom: '2px solid transparent',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontFamily: 'inherit',
+                fontSize: '14px',
+              }}
+            >
+              Canvas
             </button>
-            
-            {showMenu && (
-              <>
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 90 }} onClick={() => setShowMenu(false)} />
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '4px', backgroundColor: 'var(--n0)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-dropdown)', zIndex: 100, minWidth: '150px', overflow: 'hidden' }}>
-                  {activeView === 'canvas' && (
-                    <button 
-                      onClick={() => { setShowMenu(false); window.dispatchEvent(new CustomEvent('export-flowchart-png')); }}
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--n30)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <Download size={16} color="var(--text-secondary)" /> Export PNG
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
+            <button
+              onClick={() => setActiveView('list')}
+              className={`planning-tab ${activeView === 'list' ? 'active' : ''}`}
+              style={{
+                padding: '16px 4px',
+                color: 'var(--text-secondary)',
+                background: 'none',
+                border: 'none',
+                borderBottom: '2px solid transparent',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontFamily: 'inherit',
+                fontSize: '14px',
+              }}
+            >
+              All Flowcharts ({flowcharts?.length || 0})
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Action bar */}
-      <div style={{ padding: '16px 40px 0 40px', display: 'flex', justifyContent: 'flex-end', backgroundColor: 'var(--bg-board)' }}>
-        <button onClick={() => setIsCreating(true)} className="btn btn-primary">
-          Create Flowchart
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {activeView === 'canvas' && activeFlowchart && (
+            <>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', gap: '8px', marginRight: '6px' }}>
+                <span><kbd style={{ background: 'var(--n20)', padding: '1px 5px', borderRadius: '3px', border: '1px solid var(--n40)' }}>Tab</kbd> Next step</span>
+              </div>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('flowchart-auto-layout', { detail: { direction: 'LR' } }))}
+                className="btn btn-secondary"
+                title="Auto-align flowchart horizontally (Left → Right)"
+              >
+                <ArrowRightLeft size={14} /> Horizontal
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('flowchart-auto-layout', { detail: { direction: 'TB' } }))}
+                className="btn btn-secondary"
+                title="Auto-align flowchart vertically (Top → Bottom)"
+              >
+                <AlignCenter size={14} /> Vertical
+              </button>
+              <button
+                onClick={() => setIsSendingDiagram(true)}
+                className="btn btn-secondary"
+                style={{ color: 'var(--b400)', backgroundColor: 'var(--b50)' }}
+                title="Embed this Flowchart into a Doc or attach to a Task"
+              >
+                <Share2 size={15} /> Add to Doc / Task
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('export-flowchart-png'))}
+                className="btn btn-ghost"
+                style={{ padding: '0 8px' }}
+                title="Export Flowchart as PNG"
+              >
+                <Download size={16} />
+              </button>
+            </>
+          )}
+          <button onClick={() => setIsCreating(true)} className="btn btn-primary">
+            <Plus size={15} /> New Flowchart
+          </button>
+        </div>
       </div>
 
       {/* Content */}
       {activeView === 'list' ? (
-        <div style={{ padding: '16px 40px 32px 40px', flex: 1, overflowY: 'auto' }}>
+        <div style={{ padding: '24px 40px 32px 40px', flex: 1, overflowY: 'auto' }}>
           {!flowcharts || flowcharts.length === 0 ? (
             <div style={{ color: 'var(--text-secondary)', textAlign: 'center', marginTop: '64px' }}>
               No flowcharts yet. Create one to get started.
@@ -630,7 +873,8 @@ export default function Flowchart() {
                   key={f.id}
                   style={{
                     padding: '24px', backgroundColor: 'var(--n0)',
-                    border: '1px solid var(--border-color)', borderRadius: 'var(--radius)',
+                    border: activeFlowchartId === f.id ? '2px solid var(--b400)' : '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius)',
                     boxShadow: 'var(--shadow-card)', cursor: 'pointer',
                   }}
                   onClick={() => { setActiveFlowchartId(f.id); setActiveView('canvas'); }}
@@ -658,7 +902,7 @@ export default function Flowchart() {
                           style={{ margin: '0 0 8px 0', fontSize: '16px', color: 'var(--n800)', fontFamily: 'inherit', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '2px 8px', width: '100%', outline: 'none', fontWeight: 600 }}
                         />
                       ) : (
-                        <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', color: 'var(--n800)' }}>{f.title}</h3>
+                        <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', color: 'var(--n800)', textTransform: 'none' }}>{f.title}</h3>
                       )}
                     </div>
                     <div style={{ position: 'relative' }}>
@@ -674,10 +918,10 @@ export default function Flowchart() {
                         <>
                           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 90 }} onClick={e => { e.stopPropagation(); setOpenDropdownId(null); }} />
                           <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '4px', backgroundColor: 'var(--n0)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-dropdown)', zIndex: 100, minWidth: '150px', overflow: 'hidden' }}>
-                            <button onClick={e => { e.stopPropagation(); setEditingId(f.id); setOpenDropdownId(null); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }} onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')} onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                            <button onClick={e => { e.stopPropagation(); setEditingId(f.id); setOpenDropdownId(null); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--n800)', fontSize: '14px', textAlign: 'left' }} onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')} onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
                               <Edit2 size={16} /> Rename
                             </button>
-                            <button onClick={e => handleDelete(f.id, e)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--r400)', fontSize: '14px', textAlign: 'left' }} onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')} onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                            <button onClick={e => handleDelete(f.id, e)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--r500)', fontSize: '14px', textAlign: 'left' }} onMouseOver={e => (e.currentTarget.style.backgroundColor = 'var(--n30)')} onMouseOut={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
                               <Trash2 size={16} /> Delete
                             </button>
                           </div>
@@ -694,7 +938,7 @@ export default function Flowchart() {
           )}
         </div>
       ) : (
-        <div style={{ flex: 1, position: 'relative', marginTop: '16px' }}>
+        <div style={{ flex: 1, position: 'relative' }}>
           {activeFlowchartId ? (
             <ReactFlowProvider key={activeFlowchartId}>
               <FlowchartCanvas flowchartId={activeFlowchartId} />
@@ -711,6 +955,15 @@ export default function Flowchart() {
         <CreateFlowchartModal
           onClose={() => setIsCreating(false)}
           onSuccess={(newId) => { setActiveFlowchartId(newId); setActiveView('canvas'); }}
+        />
+      )}
+
+      {isSendingDiagram && activeFlowchart && (
+        <SendDiagramModal
+          diagramId={activeFlowchart.id}
+          diagramType="flowchart"
+          diagramTitle={activeFlowchart.title}
+          onClose={() => setIsSendingDiagram(false)}
         />
       )}
     </div>

@@ -180,10 +180,18 @@ export default function DailyNotes() {
         transition: 'width 0.2s ease, min-width 0.2s ease',
         overflow: 'hidden'
       }}>
-        <div style={{ padding: '24px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: '300px' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CalendarIcon size={20} color="var(--prio-medium)" /> Daily Notes
+        <div style={{ padding: '14px 18px', height: '54px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: '300px' }}>
+          <h2 style={{ margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--n800)' }}>
+            <CalendarIcon size={18} color="var(--prio-medium)" /> Daily Notes
           </h2>
+          <button
+            onClick={() => setIsSidebarCollapsed(true)}
+            className="btn btn-ghost"
+            style={{ height: '28px', width: '28px', padding: 0 }}
+            title="Collapse calendar"
+          >
+            <ChevronLeft size={16} />
+          </button>
         </div>
 
         <div style={{ padding: '20px', minWidth: '300px', flex: 1, overflowY: 'auto' }}>
@@ -271,31 +279,25 @@ export default function DailyNotes() {
         </div>
       </div>
 
-      {/* Sidebar Toggle Button */}
-      <button 
-        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        className="btn btn-ghost"
-        style={{
-          position: 'absolute',
-          top: '24px',
-          left: isSidebarCollapsed ? '16px' : '288px',
-          zIndex: 100,
-          width: '24px',
-          height: '24px',
-          padding: 0,
-          borderRadius: '50%',
-          backgroundColor: 'var(--n0)',
-          border: '1px solid var(--border-color)',
-          boxShadow: 'var(--shadow-card)',
-          transition: 'left 0.2s ease',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-        title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-      >
-        {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-      </button>
+      {/* Expand Calendar Button (only when collapsed) */}
+      {isSidebarCollapsed && (
+        <button 
+          onClick={() => setIsSidebarCollapsed(false)}
+          className="btn btn-secondary"
+          style={{
+            position: 'absolute',
+            top: '16px',
+            left: '16px',
+            zIndex: 100,
+            height: '30px',
+            padding: '0 10px',
+            fontSize: '12px',
+          }}
+          title="Expand Calendar"
+        >
+          <ChevronRight size={14} /> Calendar
+        </button>
+      )}
 
       {/* Editor Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>

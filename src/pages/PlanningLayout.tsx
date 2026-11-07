@@ -1,44 +1,63 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 export default function PlanningLayout() {
+  const tabStyle = {
+    padding: '16px 4px',
+    color: 'var(--text-secondary)',
+    textDecoration: 'none',
+    fontWeight: 500,
+    fontSize: '14px',
+     borderBottom: '2px solid transparent',
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: 'var(--bg-board)' }}>
-      {/* Header Section */}
-      <div style={{ padding: '32px 40px 0 40px', backgroundColor: 'var(--n0)', borderBottom: '1px solid var(--border-color)' }}>
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
-            <div style={{ width: '24px', height: '24px', backgroundColor: 'var(--prio-medium)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '10px' }}>PS</div>
-            <h1 style={{ fontSize: '24px', margin: 0, padding: 0 }}>Planning</h1>
-          </div>
-        </div>
+      {/* Unified Single-Row Header */}
+      <div
+        style={{
+          padding: '0 32px',
+          height: '54px',
+          backgroundColor: 'var(--n0)',
+          borderBottom: '1px solid var(--border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '32px',
+          flexShrink: 0,
+        }}
+      >
+        <h1 style={{ fontSize: '18px', fontWeight: 700, margin: 0, padding: 0, color: 'var(--n800)' }}>
+          Planning
+        </h1>
+
+        <div style={{ height: '20px', width: '1px', backgroundColor: 'var(--border-color)' }} />
 
         {/* Horizontal Navigation Tabs */}
-        <div style={{ display: 'flex', gap: '24px' }}>
-          <NavLink 
-            to="/planning/board" 
+        <div style={{ display: 'flex', gap: '24px', height: '100%', alignItems: 'center' }}>
+          <NavLink
+            to="/planning/board"
             className={({ isActive }) => `planning-tab ${isActive ? 'active' : ''}`}
-            style={{ paddingBottom: '12px', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}
+            style={tabStyle}
           >
             Board
           </NavLink>
-          <NavLink 
-            to="/planning/backlog" 
+          <NavLink
+            to="/planning/backlog"
             className={({ isActive }) => `planning-tab ${isActive ? 'active' : ''}`}
-            style={{ paddingBottom: '12px', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}
+            style={tabStyle}
           >
             Backlog
           </NavLink>
-          <NavLink 
-            to="/planning/details" 
+          <NavLink
+            to="/planning/details"
             className={({ isActive }) => `planning-tab ${isActive ? 'active' : ''}`}
-            style={{ paddingBottom: '12px', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}
+            style={tabStyle}
           >
-            Sprint
+            Sprints
           </NavLink>
-          <NavLink 
-            to="/planning/gantt" 
+          <NavLink
+            to="/planning/gantt"
             className={({ isActive }) => `planning-tab ${isActive ? 'active' : ''}`}
-            style={{ paddingBottom: '12px', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}
+            style={tabStyle}
           >
             Timeline
           </NavLink>
@@ -46,7 +65,7 @@ export default function PlanningLayout() {
       </div>
 
       {/* Content Area */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         <Outlet />
       </div>
     </div>

@@ -1,11 +1,12 @@
 import { HashRouter as Router, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Network, Settings, BookOpen, PanelLeftClose, PanelLeftOpen, Workflow, CalendarDays, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, Network, Settings, BookOpen, PanelLeftClose, PanelLeftOpen, Workflow, CalendarDays, ArrowLeft, Search } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import KanbanBoard from './pages/KanbanBoard';
 import MindMap from './pages/MindMap';
 import Backlog from './pages/Backlog';
 import Docs from './pages/Docs';
 import TaskModal from './components/TaskModal';
+import CommandPalette from './components/CommandPalette';
 import PlanningLayout from './pages/PlanningLayout';
 import SprintDetails from './pages/SprintDetails';
 import GanttChart from './pages/GanttChart';
@@ -19,21 +20,11 @@ function Sidebar({ collapsed, onToggle, onOpenSettings }: { collapsed: boolean; 
   const navigate = useNavigate();
   return (
     <div className={`sidebar ${collapsed ? 'collapsed' : ''}`} style={{ position: 'relative' }}>
-      <button className="sidebar-toggle-btn" onClick={onToggle}>
+      <button className="sidebar-toggle-btn" onClick={onToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
         {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
       </button>
 
-      <div style={{ padding: '8px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '32px', height: '32px', minWidth: '32px', backgroundColor: 'var(--prio-medium)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>PS</div>
-          <div className="sidebar-text">
-            <h2 style={{ fontSize: '14px', margin: 0, color: 'var(--text-primary)', padding: 0 }}>PlanSpace</h2>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Workspace</div>
-          </div>
-        </div>
-      </div>
-
-      <nav style={{ flex: 1 }}>
+      <nav style={{ flex: 1, marginTop: '4px' }}>
         <NavLink to="/planning/board" className={() => `nav-link ${window.location.hash.includes('#/planning') ? 'active' : ''}`} title="Planning">
           <LayoutDashboard size={18} />
           <span className="sidebar-text">Planning</span>
@@ -58,15 +49,15 @@ function Sidebar({ collapsed, onToggle, onOpenSettings }: { collapsed: boolean; 
       </nav>
 
       <div style={{ marginTop: 'auto' }}>
-        <button onClick={() => navigate(-1)} className="btn btn-ghost nav-link" style={{ width: '100%', justifyContent: 'flex-start' }} title="Go Back">
+        <button onClick={() => navigate(-1)} className="btn btn-ghost nav-link" style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }} title="Go Back">
           <ArrowLeft size={18} />
           <span className="sidebar-text">Go Back</span>
         </button>
-        <button onClick={onOpenSettings} className="btn btn-ghost nav-link" style={{ width: '100%', justifyContent: 'flex-start' }} title="Settings">
+        <button onClick={onOpenSettings} className="btn btn-ghost nav-link" style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }} title="Settings">
           <Settings size={18} />
           <span className="sidebar-text">Settings</span>
         </button>
-        <div className="sidebar-text" style={{ padding: '4px 16px', fontSize: '11px', color: 'var(--text-secondary)', userSelect: 'none' }}>
+        <div className="sidebar-text" style={{ padding: '4px 12px', fontSize: '11px', color: 'var(--text-secondary)', userSelect: 'none' }}>
           v{packageJson.version}
         </div>
       </div>
@@ -74,53 +65,113 @@ function Sidebar({ collapsed, onToggle, onOpenSettings }: { collapsed: boolean; 
   );
 }
 
-
-
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
+  const [defaultSprintId, setDefaultSprintId] = useState<string | undefined>(undefined);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   useEffect(() => {
     const handleEditTask = (e: any) => {
-      setEditingTask(e.detail);
+      const detail = e.detail;
+      if (detail && detail.id) {
+        setEditingTask(detail as Task);
+        setDefaultSprintId(undefined);
+      } else {
+        setEditingTask(undefined);
+        setDefaultSprintId(detail?.defaultSprintId);
+      }
       setIsModalOpen(true);
     };
     window.addEventListener('edit-task', handleEditTask);
     return () => window.removeEventListener('edit-task', handleEditTask);
   }, []);
 
-
-
   return (
     <Router>
-      <div className="app-container" style={{ position: 'relative' }}>
-        {/* Invisible drag region across the top to allow window dragging */}
-        <div className="titlebar-drag-region" />
-        <Sidebar collapsed={isSidebarCollapsed} onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onOpenSettings={() => setIsSettingsOpen(true)} />
-        <div className="main-content">
-          <div className="content-area">
-            <Routes>
-              <Route path="/" element={<Navigate to="/planning/board" replace />} />
-              <Route path="/planning" element={<PlanningLayout />}>
-                <Route index element={<Navigate to="/planning/board" replace />} />
-                <Route path="board" element={<KanbanBoard />} />
-                <Route path="backlog" element={<Backlog />} />
-                <Route path="details" element={<SprintDetails />} />
-                <Route path="gantt" element={<GanttChart />} />
-              </Route>
-              <Route path="/mindmap" element={<MindMap />} />
-              <Route path="/docs" element={<Docs />} />
-              <Route path="/flowchart" element={<Flowchart />} />
-              <Route path="/daily-notes" element={<DailyNotes />} />
-              <Route path="/calendar" element={<div>Calendar View (Coming Soon)</div>} />
-            </Routes>
+      <div className="app-shell">
+        {/* Dedicated 32px Window Titlebar separated from page headers */}
+        <div className="window-titlebar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div
+              style={{
+                width: '20px',
+                height: '20px',
+                backgroundColor: 'var(--prio-medium)',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 700,
+                fontSize: '10px',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              PS
+            </div>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--n700)' }}>PlanSpace</span>
+          </div>
+
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+            className="titlebar-search-btn"
+            title="Quick Jump & Search (Ctrl+K)"
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Search size={13} color="var(--n400)" />
+              <span>Search or jump to...</span>
+            </span>
+            <kbd
+              style={{
+                fontSize: '10px',
+                padding: '0px 5px',
+                backgroundColor: 'var(--n0)',
+                border: '1px solid var(--n40)',
+                borderRadius: '3px',
+                color: 'var(--n500)',
+                lineHeight: '16px',
+              }}
+            >
+              Ctrl+K
+            </kbd>
+          </button>
+
+          {/* Spacer for native Windows minimize/maximize/close overlay controls */}
+          <div style={{ width: '138px', flexShrink: 0 }} />
+        </div>
+
+        <div className="app-container">
+          <Sidebar
+            collapsed={isSidebarCollapsed}
+            onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+          <div className="main-content">
+            <div className="content-area">
+              <Routes>
+                <Route path="/" element={<Navigate to="/planning/board" replace />} />
+                <Route path="/planning" element={<PlanningLayout />}>
+                  <Route index element={<Navigate to="/planning/board" replace />} />
+                  <Route path="board" element={<KanbanBoard />} />
+                  <Route path="backlog" element={<Backlog />} />
+                  <Route path="details" element={<SprintDetails />} />
+                  <Route path="gantt" element={<GanttChart />} />
+                </Route>
+                <Route path="/mindmap" element={<MindMap />} />
+                <Route path="/docs" element={<Docs />} />
+                <Route path="/flowchart" element={<Flowchart />} />
+                <Route path="/daily-notes" element={<DailyNotes />} />
+                <Route path="/calendar" element={<div>Calendar View (Coming Soon)</div>} />
+              </Routes>
+            </div>
           </div>
         </div>
       </div>
-      {isModalOpen && <TaskModal taskToEdit={editingTask} onClose={() => setIsModalOpen(false)} />}
+      {isModalOpen && <TaskModal taskToEdit={editingTask} defaultSprintId={defaultSprintId} onClose={() => setIsModalOpen(false)} />}
       {isSettingsOpen && <DataManagementModal onClose={() => setIsSettingsOpen(false)} />}
+      <CommandPalette />
     </Router>
   );
 }

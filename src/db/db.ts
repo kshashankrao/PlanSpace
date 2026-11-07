@@ -11,6 +11,10 @@ export interface Task {
   createdAt: number;
   updatedAt: number;
   mindmapNodeId?: string; // Optional link to a mindmap node
+  mindMapId?: string; // Optional link to a mindmap
+  flowchartId?: string; // Optional link to a flowchart
+  flowchartNodeId?: string; // Optional link to a flowchart node
+  docId?: string; // Optional link to a doc
   dueDate?: number;
   order: number; // For manual ordering within a column
   sprintId?: string; // Link to sprint, undefined means Backlog
@@ -211,5 +215,12 @@ db.on('populate', () => {
     { id: 'done', title: 'Done', order: 2 },
   ]);
 });
+
+export function formatTaskId(id: string): string {
+  if (id.startsWith('task-')) {
+    return `TSK-${id.slice(5).toUpperCase()}`;
+  }
+  return `TSK-${id.substring(0, 4).toUpperCase()}`;
+}
 
 export { db };

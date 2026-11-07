@@ -23312,7 +23312,8 @@ function createWindow() {
 		titleBarStyle: "hidden",
 		titleBarOverlay: {
 			color: "#ffffff",
-			symbolColor: "#000000"
+			symbolColor: "#42526E",
+			height: 31
 		},
 		webPreferences: {
 			preload: path.join(__dirname, "preload.mjs"),

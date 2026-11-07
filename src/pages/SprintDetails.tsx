@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../db/db';
+import { db, formatTaskId } from '../db/db';
 import CreateSprintModal from '../components/CreateSprintModal';
 import { ArrowLeft } from 'lucide-react';
 
@@ -197,9 +197,9 @@ export default function SprintDetails() {
               return (
                 <div 
                   key={task.id} 
-                  onDoubleClick={() => window.dispatchEvent(new CustomEvent('edit-task', { detail: task }))}
+                  onClick={() => window.dispatchEvent(new CustomEvent('edit-task', { detail: task }))}
                   style={{ 
-                    padding: '16px', 
+                    padding: '14px 16px', 
                     borderBottom: index < sprintTasks.length - 1 ? '1px solid var(--border-color)' : 'none',
                     display: 'flex',
                     alignItems: 'center',
@@ -207,7 +207,9 @@ export default function SprintDetails() {
                     cursor: 'pointer'
                   }}
                 >
-                  <div style={{ width: '40px', color: 'var(--text-secondary)', fontSize: '13px' }}>TSK</div>
+                  <div style={{ width: '56px', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600 }}>
+                    {formatTaskId(task.id)}
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: 'var(--n800)', fontWeight: 500, fontSize: '14px', textDecoration: task.statusId === 'done' ? 'line-through' : 'none' }}>
                       {task.title}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useEditor, EditorContent, ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
 import { Extension, Node, mergeAttributes, InputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -18,13 +18,13 @@ import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
 import Superscript from '@tiptap/extension-superscript';
 import Subscript from '@tiptap/extension-subscript';
-import { 
+import {
   Bold, Italic, Strikethrough, Underline as UnderlineIcon, Superscript as SuperscriptIcon, Subscript as SubscriptIcon,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, ListTodo,
   Heading1, Heading2, Heading3, TextQuote, Minus,
   Image as ImageIcon, Table as TableIcon,
-  MoreVertical, CheckSquare, Share2, FileDown, FileText, Highlighter, Search, BookOpen, Network, FileImage, CalendarDays
+  CheckSquare, FileDown, FileText, Highlighter, Search, BookOpen, Network, Workflow, CalendarDays, Link2
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -39,9 +39,21 @@ const EmbeddedDiagramNode = Node.create({
   atom: true,
   addAttributes() {
     return {
-      diagramId: { default: null },
-      diagramType: { default: 'mindmap' },
-      title: { default: '' },
+      diagramId: {
+        default: null,
+        parseHTML: el => el.getAttribute('diagramid') || el.getAttribute('diagramId'),
+        renderHTML: attrs => ({ diagramid: attrs.diagramId }),
+      },
+      diagramType: {
+        default: 'mindmap',
+        parseHTML: el => el.getAttribute('diagramtype') || el.getAttribute('diagramType') || 'mindmap',
+        renderHTML: attrs => ({ diagramtype: attrs.diagramType }),
+      },
+      title: {
+        default: '',
+        parseHTML: el => el.getAttribute('title') || '',
+        renderHTML: attrs => ({ title: attrs.title }),
+      },
     };
   },
   parseHTML() {
@@ -114,7 +126,16 @@ const DateNode = Node.create({
         getAttrs: (dom) => {
           if (typeof dom === 'string') return {};
           return {
-            date: (dom as HTMLElement).getAttribute('data-date'),
+            date: (dom as HTMLElement).getAttribute('data-date') || (dom as HTMLElement).textContent?.replace('📅', '').trim(),
+          };
+        },
+      },
+      {
+        tag: 'span[data-type="date-badge"]',
+        getAttrs: (dom) => {
+          if (typeof dom === 'string') return {};
+          return {
+            date: (dom as HTMLElement).getAttribute('data-date') || (dom as HTMLElement).textContent?.replace('📅', '').trim(),
           };
         },
       },
@@ -124,10 +145,11 @@ const DateNode = Node.create({
   renderHTML({ HTMLAttributes }) {
     return [
       'span',
-      mergeAttributes(HTMLAttributes, { 
-        class: 'date-badge', 
+      mergeAttributes(HTMLAttributes, {
+        class: 'date-badge',
+        'data-type': 'date-badge',
         'data-date': HTMLAttributes.date,
-        style: 'display: inline-flex; align-items: center; gap: 4px; background-color: var(--n100); color: var(--n800); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; font-weight: 500; user-select: none;'
+        style: 'display: inline-flex; align-items: center; gap: 4px; background-color: var(--b50); color: var(--b500); border: 1px solid var(--b100); padding: 1px 7px; border-radius: 4px; font-size: 12.5px; font-weight: 600; user-select: none;'
       }),
       `📅 ${HTMLAttributes.date}`,
     ];
@@ -160,10 +182,10 @@ const TocComponent = (props: any) => {
 
   return (
     <NodeViewWrapper className="toc-node" contentEditable={false}>
-      <div style={{ padding: '16px', backgroundColor: 'var(--n50)', border: '1px solid var(--n100)', borderRadius: '8px', margin: '16px 0', userSelect: 'none' }}>
+      <div style={{ padding: '16px', backgroundColor: 'var(--n20)', border: '1px solid var(--border-color)', borderRadius: '8px', margin: '16px 0', userSelect: 'none' }}>
         <h4 style={{ margin: '0 0 8px 0', textTransform: 'uppercase', fontSize: '12px', color: 'var(--n500)' }}>Table of Contents</h4>
         {getHeadings().length === 0 ? (
-           <div style={{ color: 'var(--n400)', fontSize: '13px' }}>No headings found.</div>
+          <div style={{ color: 'var(--n400)', fontSize: '13px' }}>No headings found.</div>
         ) : (
           getHeadings().map((h, i) => (
             <div
@@ -210,54 +232,53 @@ const TocNode = Node.create({
   },
 });
 
-
 const SmartTabExtension = Extension.create({
   name: 'smartTab',
   addKeyboardShortcuts() {
     return {
       'Tab': () => {
         if (this.editor.isActive('orderedList')) {
-           const canSink = this.editor.can().sinkListItem('listItem');
-           if (canSink) {
-             const state = this.editor.state;
-             const { $from } = state.selection;
-             let prevItemHasList = false;
-             
-             try {
-               let listItemDepth = -1;
-               for (let d = $from.depth; d > 0; d--) {
-                 if ($from.node(d).type.name === 'listItem') {
-                   listItemDepth = d;
-                   break;
-                 }
-               }
-               
-               if (listItemDepth > 0) {
-                 const listDepth = listItemDepth - 1;
-                 const listNode = $from.node(listDepth);
-                 const index = $from.index(listDepth);
-                 
-                 if (index > 0) {
-                   const prevItem = listNode.child(index - 1);
-                   if (prevItem.childCount > 1) {
-                     const lastChild = prevItem.lastChild;
-                     if (lastChild?.type.name === 'orderedList' || lastChild?.type.name === 'bulletList') {
-                       prevItemHasList = true;
-                     }
-                   }
-                 }
-               }
-             } catch (err) {
-               console.error("Error inspecting Prosemirror state:", err);
-             }
+          const canSink = this.editor.can().sinkListItem('listItem');
+          if (canSink) {
+            const state = this.editor.state;
+            const { $from } = state.selection;
+            let prevItemHasList = false;
 
-             this.editor.commands.sinkListItem('listItem');
+            try {
+              let listItemDepth = -1;
+              for (let d = $from.depth; d > 0; d--) {
+                if ($from.node(d).type.name === 'listItem') {
+                  listItemDepth = d;
+                  break;
+                }
+              }
 
-             if (!prevItemHasList && this.editor.isActive('orderedList')) {
-               this.editor.commands.toggleList('bulletList', 'listItem');
-             }
-             return true; 
-           }
+              if (listItemDepth > 0) {
+                const listDepth = listItemDepth - 1;
+                const listNode = $from.node(listDepth);
+                const index = $from.index(listDepth);
+
+                if (index > 0) {
+                  const prevItem = listNode.child(index - 1);
+                  if (prevItem.childCount > 1) {
+                    const lastChild = prevItem.lastChild;
+                    if (lastChild?.type.name === 'orderedList' || lastChild?.type.name === 'bulletList') {
+                      prevItemHasList = true;
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.error("Error inspecting Prosemirror state:", err);
+            }
+
+            this.editor.commands.sinkListItem('listItem');
+
+            if (!prevItemHasList && this.editor.isActive('orderedList')) {
+              this.editor.commands.toggleList('bulletList', 'listItem');
+            }
+            return true;
+          }
         }
         return false;
       }
@@ -272,16 +293,16 @@ const getDisplayDate = (dateStr: string) => {
 
 const MiniCalendar = ({ onSelect }: { onSelect: (date: string) => void }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  
+
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-  
+
   const getDaysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
   const getFirstDayOfMonth = (y: number, m: number) => new Date(y, m, 1).getDay();
 
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
-  
+
   const days = [];
   for (let i = 0; i < firstDay; i++) days.push(null);
   for (let i = 1; i <= daysInMonth; i++) days.push(i);
@@ -303,19 +324,19 @@ const MiniCalendar = ({ onSelect }: { onSelect: (date: string) => void }) => {
         {days.map((day, i) => (
           <div key={i} style={{ textAlign: 'center' }}>
             {day ? (
-              <button 
+              <button
                 onClick={() => {
                   const d = new Date(year, month, day);
                   const formatted = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                   onSelect(formatted);
                 }}
-                style={{ 
-                  width: '100%', padding: '6px 0', fontSize: '13px', 
+                style={{
+                  width: '100%', padding: '6px 0', fontSize: '13px',
                   background: 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer',
                   color: 'var(--text-primary)'
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--n100)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--n30)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
                 {day}
               </button>
@@ -327,19 +348,29 @@ const MiniCalendar = ({ onSelect }: { onSelect: (date: string) => void }) => {
   );
 };
 
-const ReferenceModal = ({ 
-  isOpen, 
-  onClose, 
-  type, 
-  onSelect 
-}: { 
-  isOpen: boolean, 
-  onClose: () => void, 
-  type: 'task' | 'mindmap' | 'flowchart' | 'embed_mindmap' | 'embed_flowchart' | 'doc' | 'daily_note' | 'date_picker', 
-  onSelect: (id: string, title: string) => void 
+export type ReferenceModalType =
+  | 'task'
+  | 'mindmap'
+  | 'flowchart'
+  | 'embed_mindmap'
+  | 'embed_flowchart'
+  | 'doc'
+  | 'daily_note'
+  | 'date_picker';
+
+const ReferenceModal = ({
+  isOpen,
+  onClose,
+  type,
+  onSelect
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  type: ReferenceModalType;
+  onSelect: (id: string, title: string) => void;
 }) => {
   const [search, setSearch] = useState('');
-  
+
   const items = useLiveQuery(async () => {
     if (type === 'task') {
       const tasks = await db.tasks.toArray();
@@ -363,17 +394,18 @@ const ReferenceModal = ({
 
   return (
     <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-      backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, 
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: 'rgba(9, 30, 66, 0.54)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center'
     }} onClick={onClose}>
       <div style={{
-        background: 'var(--n0)', borderRadius: '8px', padding: '16px', 
-        width: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column'
+        background: 'var(--n0)', borderRadius: '8px', padding: '16px',
+        width: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+        boxShadow: 'var(--shadow-modal)'
       }} onClick={e => e.stopPropagation()}>
         {type === 'date_picker' ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <MiniCalendar 
+            <MiniCalendar
               onSelect={(dateStr) => {
                 const date = new Date(dateStr);
                 const userDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000);
@@ -385,14 +417,16 @@ const ReferenceModal = ({
           </div>
         ) : (
           <>
-            <h3 style={{ margin: '0 0 16px 0' }}>{type.includes('embed') ? 'Embed' : 'Link to'} {
-              type.includes('task') ? 'Task' : 
-              type.includes('mindmap') ? 'Mind Map' : 
-              type === 'doc' ? 'Document' :
-              type === 'daily_note' ? 'Daily Note' :
-              'Flowchart'
-            }</h3>
-            <input 
+            <h3 style={{ margin: '0 0 12px 0', textTransform: 'none', color: 'var(--n800)', fontSize: '16px' }}>
+              {type.includes('embed') ? 'Embed' : 'Link to'} {
+                type.includes('task') ? 'Task' :
+                  type.includes('mindmap') ? 'Mind Map' :
+                    type === 'doc' ? 'Document' :
+                      type === 'daily_note' ? 'Daily Note' :
+                        'Flowchart'
+              }
+            </h3>
+            <input
               autoFocus
               placeholder="Search..."
               value={search}
@@ -400,35 +434,39 @@ const ReferenceModal = ({
               onKeyDown={e => {
                 if (e.key === 'Escape') {
                   onClose();
+                } else if (e.key === 'Enter' && items && items.length > 0) {
+                  e.preventDefault();
+                  onSelect(items[0].id, items[0].title);
+                  onClose();
                 }
               }}
               className="input-field"
-              style={{ marginBottom: '16px' }}
+              style={{ marginBottom: '12px', padding: '8px 10px' }}
             />
           </>
         )}
         {type !== 'date_picker' && (
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {items?.map(item => (
-            <button
-              key={item.id}
-              onClick={() => { onSelect(item.id, item.title); onClose(); }}
-              style={{
-                padding: '8px 12px', textAlign: 'left', background: 'transparent', 
-                border: 'none', borderRadius: '4px', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '8px',
-                color: 'var(--text-primary)'
-              }}
-              className="dropdown-item"
-            >
-              {type.includes('task') ? <CheckSquare size={16} color="var(--prio-medium)" /> : 
-               type.includes('mindmap') ? <Network size={16} color="var(--prio-high)" /> : 
-               type === 'doc' ? <FileText size={16} color="var(--prio-high)" /> :
-               type === 'daily_note' ? <CalendarDays size={16} color="var(--prio-medium)" /> :
-               <Share2 size={16} color="var(--prio-high)" />}
-              {item.title}
-            </button>
-          ))}
+            {items?.map(item => (
+              <button
+                key={item.id}
+                onClick={() => { onSelect(item.id, item.title); onClose(); }}
+                style={{
+                  padding: '8px 12px', textAlign: 'left', background: 'transparent',
+                  border: 'none', borderRadius: '4px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  color: 'var(--text-primary)'
+                }}
+                className="dropdown-item"
+              >
+                {type.includes('task') ? <CheckSquare size={16} color="var(--prio-medium)" /> :
+                  type.includes('mindmap') ? <Network size={16} color="var(--b400)" /> :
+                    type === 'doc' ? <FileText size={16} color="var(--prio-high)" /> :
+                      type === 'daily_note' ? <CalendarDays size={16} color="var(--prio-medium)" /> :
+                        <Workflow size={16} color="var(--prio-high)" />}
+                {item.title}
+              </button>
+            ))}
             {items?.length === 0 && <div style={{ padding: '8px', color: 'var(--n500)', fontSize: '14px' }}>No matches found.</div>}
           </div>
         )}
@@ -439,20 +477,24 @@ const ReferenceModal = ({
 
 export const MenuBar = ({ editor }: { editor: any }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [modalType, setModalType] = useState<'task' | 'mindmap' | 'flowchart' | 'embed_mindmap' | 'embed_flowchart' | 'doc' | 'daily_note' | 'date_picker' | null>(null);
+  const [isEmbedMenuOpen, setIsEmbedMenuOpen] = useState(false);
+  const [isLinkMenuOpen, setIsLinkMenuOpen] = useState(false);
+  const [modalType, setModalType] = useState<ReferenceModalType | null>(null);
 
-  // Close menus when clicking outside
   useEffect(() => {
-    const handleClickOutside = () => setIsMenuOpen(false);
-    if (isMenuOpen) {
+    const handleClickOutside = () => {
+      setIsMenuOpen(false);
+      setIsEmbedMenuOpen(false);
+      setIsLinkMenuOpen(false);
+    };
+    if (isMenuOpen || isEmbedMenuOpen || isLinkMenuOpen) {
       document.addEventListener('click', handleClickOutside);
     }
     return () => {
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [isMenuOpen]);
+  }, [isMenuOpen, isEmbedMenuOpen, isLinkMenuOpen]);
 
-  // Listen for custom event to open reference modal from shortcuts
   useEffect(() => {
     const handleOpenModal = (e: any) => {
       setModalType(e.detail.type);
@@ -474,11 +516,11 @@ export const MenuBar = ({ editor }: { editor: any }) => {
         attrs: { diagramId: id, diagramType, title }
       }).run();
     } else {
-      const url = modalType === 'task' ? `#task-${id}` : 
-                  modalType === 'mindmap' ? `#mindmap-${id}` : 
-                  modalType === 'doc' ? `#doc-${id}` :
-                  modalType === 'daily_note' ? `#dailynote-${id}` :
-                  `#flowchart-${id}`;
+      const url = modalType === 'task' ? `#task-${id}` :
+        modalType === 'mindmap' ? `#mindmap-${id}` :
+          modalType === 'doc' ? `#doc-${id}` :
+            modalType === 'daily_note' ? `#dailynote-${id}` :
+              `#flowchart-${id}`;
       editor.chain().focus().insertContent({
         type: 'reference',
         attrs: { href: url, title }
@@ -490,11 +532,11 @@ export const MenuBar = ({ editor }: { editor: any }) => {
     const element = document.querySelector('.tiptap-container .ProseMirror') as HTMLElement;
     if (element) {
       const opt: any = {
-        margin:       0.5,
-        filename:     'document.pdf',
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+        margin: 0.5,
+        filename: 'document.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
       };
       html2pdf().set(opt).from(element).save();
     }
@@ -506,7 +548,7 @@ export const MenuBar = ({ editor }: { editor: any }) => {
       const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>";
       const footer = "</body></html>";
       const sourceHTML = header + element.innerHTML + footer;
-      
+
       const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
       const fileDownload = document.createElement("a");
       document.body.appendChild(fileDownload);
@@ -520,57 +562,145 @@ export const MenuBar = ({ editor }: { editor: any }) => {
   if (!editor) return null;
 
   return (
-    <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-board)', flexWrap: 'wrap' }}>
-      
+    <div style={{ display: 'flex', gap: '6px', padding: '10px 14px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-board)', flexWrap: 'wrap', alignItems: 'center' }}>
+
       {/* Group 1: Inline Styles */}
-      <div style={{ display: 'flex', gap: '4px' }}>
-        <button onClick={() => editor.chain().focus().toggleBold().run()} className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`} title="Bold" style={toolbarBtnStyle(editor.isActive('bold'))}><Bold size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`} title="Italic" style={toolbarBtnStyle(editor.isActive('italic'))}><Italic size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`toolbar-btn ${editor.isActive('underline') ? 'active' : ''}`} title="Underline" style={toolbarBtnStyle(editor.isActive('underline'))}><UnderlineIcon size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleStrike().run()} className={`toolbar-btn ${editor.isActive('strike') ? 'active' : ''}`} title="Strikethrough" style={toolbarBtnStyle(editor.isActive('strike'))}><Strikethrough size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={`toolbar-btn ${editor.isActive('superscript') ? 'active' : ''}`} title="Superscript" style={toolbarBtnStyle(editor.isActive('superscript'))}><SuperscriptIcon size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={`toolbar-btn ${editor.isActive('subscript') ? 'active' : ''}`} title="Subscript" style={toolbarBtnStyle(editor.isActive('subscript'))}><SubscriptIcon size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleHighlight().run()} className={`toolbar-btn ${editor.isActive('highlight') ? 'active' : ''}`} title="Highlight" style={toolbarBtnStyle(editor.isActive('highlight'))}><Highlighter size={18} /></button>
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginLeft: '4px' }} title="Text Color">
+      <div style={{ display: 'flex', gap: '2px' }}>
+        <button onClick={() => editor.chain().focus().toggleBold().run()} className={`toolbar-btn ${editor.isActive('bold') ? 'active' : ''}`} title="Bold (Ctrl+B)" style={toolbarBtnStyle(editor.isActive('bold'))}><Bold size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`toolbar-btn ${editor.isActive('italic') ? 'active' : ''}`} title="Italic (Ctrl+I)" style={toolbarBtnStyle(editor.isActive('italic'))}><Italic size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={`toolbar-btn ${editor.isActive('underline') ? 'active' : ''}`} title="Underline (Ctrl+U)" style={toolbarBtnStyle(editor.isActive('underline'))}><UnderlineIcon size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleStrike().run()} className={`toolbar-btn ${editor.isActive('strike') ? 'active' : ''}`} title="Strikethrough" style={toolbarBtnStyle(editor.isActive('strike'))}><Strikethrough size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleSuperscript().run()} className={`toolbar-btn ${editor.isActive('superscript') ? 'active' : ''}`} title="Superscript" style={toolbarBtnStyle(editor.isActive('superscript'))}><SuperscriptIcon size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleSubscript().run()} className={`toolbar-btn ${editor.isActive('subscript') ? 'active' : ''}`} title="Subscript" style={toolbarBtnStyle(editor.isActive('subscript'))}><SubscriptIcon size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleHighlight().run()} className={`toolbar-btn ${editor.isActive('highlight') ? 'active' : ''}`} title="Highlight" style={toolbarBtnStyle(editor.isActive('highlight'))}><Highlighter size={17} /></button>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginLeft: '2px' }} title="Text Color">
           <input type="color" onInput={(e) => editor.chain().focus().setColor(e.currentTarget.value).run()} value={editor.getAttributes('textStyle').color || '#000000'} style={{ width: '20px', height: '20px', padding: 0, border: 'none', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'transparent' }} />
         </div>
       </div>
 
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
+      <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 2px' }} />
 
       {/* Group 2: Block Styles */}
-      <div style={{ display: 'flex', gap: '4px' }}>
-        <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 1 }) ? 'active' : ''}`} title="Heading 1" style={toolbarBtnStyle(editor.isActive('heading', { level: 1 }))}><Heading1 size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 2 }) ? 'active' : ''}`} title="Heading 2" style={toolbarBtnStyle(editor.isActive('heading', { level: 2 }))}><Heading2 size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 3 }) ? 'active' : ''}`} title="Heading 3" style={toolbarBtnStyle(editor.isActive('heading', { level: 3 }))}><Heading3 size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`} title="Blockquote" style={toolbarBtnStyle(editor.isActive('blockquote'))}><TextQuote size={18} /></button>
+      <div style={{ display: 'flex', gap: '2px' }}>
+        <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 1 }) ? 'active' : ''}`} title="Heading 1 (Ctrl+1)" style={toolbarBtnStyle(editor.isActive('heading', { level: 1 }))}><Heading1 size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 2 }) ? 'active' : ''}`} title="Heading 2 (Ctrl+2)" style={toolbarBtnStyle(editor.isActive('heading', { level: 2 }))}><Heading2 size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} className={`toolbar-btn ${editor.isActive('heading', { level: 3 }) ? 'active' : ''}`} title="Heading 3 (Ctrl+3)" style={toolbarBtnStyle(editor.isActive('heading', { level: 3 }))}><Heading3 size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleBlockquote().run()} className={`toolbar-btn ${editor.isActive('blockquote') ? 'active' : ''}`} title="Blockquote" style={toolbarBtnStyle(editor.isActive('blockquote'))}><TextQuote size={17} /></button>
       </div>
 
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
+      <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 2px' }} />
 
       {/* Group 3: Alignment */}
-      <div style={{ display: 'flex', gap: '4px' }}>
-        <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'left' }) ? 'active' : ''}`} title="Align Left" style={toolbarBtnStyle(editor.isActive({ textAlign: 'left' }))}><AlignLeft size={18} /></button>
-        <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'center' }) ? 'active' : ''}`} title="Align Center" style={toolbarBtnStyle(editor.isActive({ textAlign: 'center' }))}><AlignCenter size={18} /></button>
-        <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'right' }) ? 'active' : ''}`} title="Align Right" style={toolbarBtnStyle(editor.isActive({ textAlign: 'right' }))}><AlignRight size={18} /></button>
-        <button onClick={() => editor.chain().focus().setTextAlign('justify').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'justify' }) ? 'active' : ''}`} title="Justify" style={toolbarBtnStyle(editor.isActive({ textAlign: 'justify' }))}><AlignJustify size={18} /></button>
+      <div style={{ display: 'flex', gap: '2px' }}>
+        <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'left' }) ? 'active' : ''}`} title="Align Left" style={toolbarBtnStyle(editor.isActive({ textAlign: 'left' }))}><AlignLeft size={17} /></button>
+        <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'center' }) ? 'active' : ''}`} title="Align Center" style={toolbarBtnStyle(editor.isActive({ textAlign: 'center' }))}><AlignCenter size={17} /></button>
+        <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'right' }) ? 'active' : ''}`} title="Align Right" style={toolbarBtnStyle(editor.isActive({ textAlign: 'right' }))}><AlignRight size={17} /></button>
+        <button onClick={() => editor.chain().focus().setTextAlign('justify').run()} className={`toolbar-btn ${editor.isActive({ textAlign: 'justify' }) ? 'active' : ''}`} title="Justify" style={toolbarBtnStyle(editor.isActive({ textAlign: 'justify' }))}><AlignJustify size={17} /></button>
       </div>
 
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
+      <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 2px' }} />
 
       {/* Group 4: Lists */}
-      <div style={{ display: 'flex', gap: '4px' }}>
-        <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`} title="Bullet List" style={toolbarBtnStyle(editor.isActive('bulletList'))}><List size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`} title="Ordered List" style={toolbarBtnStyle(editor.isActive('orderedList'))}><ListOrdered size={18} /></button>
-        <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={`toolbar-btn ${editor.isActive('taskList') ? 'active' : ''}`} title="Task List" style={toolbarBtnStyle(editor.isActive('taskList'))}><ListTodo size={18} /></button>
+      <div style={{ display: 'flex', gap: '2px' }}>
+        <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={`toolbar-btn ${editor.isActive('bulletList') ? 'active' : ''}`} title="Bullet List" style={toolbarBtnStyle(editor.isActive('bulletList'))}><List size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={`toolbar-btn ${editor.isActive('orderedList') ? 'active' : ''}`} title="Ordered List" style={toolbarBtnStyle(editor.isActive('orderedList'))}><ListOrdered size={17} /></button>
+        <button onClick={() => editor.chain().focus().toggleTaskList().run()} className={`toolbar-btn ${editor.isActive('taskList') ? 'active' : ''}`} title="Task Checklist" style={toolbarBtnStyle(editor.isActive('taskList'))}><ListTodo size={17} /></button>
       </div>
 
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
+      <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 2px' }} />
 
-      {/* Group 5: Inserts */}
-      <div style={{ display: 'flex', gap: '4px' }}>
-        <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} className="toolbar-btn" title="Insert Table" style={toolbarBtnStyle(false)}><TableIcon size={18} /></button>
-        <button onClick={() => editor.chain().focus().setHorizontalRule().run()} className="toolbar-btn" title="Insert Divider" style={toolbarBtnStyle(false)}><Minus size={18} /></button>
+      {/* Group 5: Direct Embed & Link Quick Actions */}
+      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIsEmbedMenuOpen(!isEmbedMenuOpen); setIsLinkMenuOpen(false); setIsMenuOpen(false); }}
+            style={{
+              ...toolbarBtnStyle(isEmbedMenuOpen),
+              padding: '4px 8px',
+              fontSize: '12px',
+              fontWeight: 600,
+              gap: '4px',
+              backgroundColor: isEmbedMenuOpen ? 'var(--b100)' : 'var(--b50)',
+              color: 'var(--b500)',
+            }}
+            title="Embed a Mind Map or Flowchart directly into this document"
+          >
+            <Network size={14} /> Embed Diagram
+          </button>
+          {isEmbedMenuOpen && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, background: 'var(--n0)',
+              border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: 'var(--shadow-dropdown)',
+              padding: '4px 0', zIndex: 20, minWidth: '185px', display: 'flex', flexDirection: 'column', marginTop: '4px'
+            }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setModalType('embed_mindmap'); setIsEmbedMenuOpen(false); }}
+                style={{ background: 'none', border: 'none', padding: '8px 12px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }}
+                className="dropdown-item"
+              >
+                <Network size={15} color="var(--b400)" /> Embed Mind Map
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setModalType('embed_flowchart'); setIsEmbedMenuOpen(false); }}
+                style={{ background: 'none', border: 'none', padding: '8px 12px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }}
+                className="dropdown-item"
+              >
+                <Workflow size={15} color="var(--prio-medium)" /> Embed Flowchart
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIsLinkMenuOpen(!isLinkMenuOpen); setIsEmbedMenuOpen(false); setIsMenuOpen(false); }}
+            style={{
+              ...toolbarBtnStyle(isLinkMenuOpen),
+              padding: '4px 8px',
+              fontSize: '12px',
+              fontWeight: 500,
+              gap: '4px',
+              backgroundColor: isLinkMenuOpen ? 'var(--n30)' : 'var(--n20)',
+              color: 'var(--n700)',
+            }}
+            title="Insert smart link to a Task, Diagram, Doc, or Date"
+          >
+            <Link2 size={14} /> Link
+          </button>
+          {isLinkMenuOpen && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, background: 'var(--n0)',
+              border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: 'var(--shadow-dropdown)',
+              padding: '4px 0', zIndex: 20, minWidth: '195px', display: 'flex', flexDirection: 'column', marginTop: '4px'
+            }}>
+              <button onClick={(e) => { e.stopPropagation(); setModalType('task'); setIsLinkMenuOpen(false); }} style={{ background: 'none', border: 'none', padding: '8px 12px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }} className="dropdown-item">
+                <CheckSquare size={15} color="var(--b400)" /> Link Task
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setModalType('mindmap'); setIsLinkMenuOpen(false); }} style={{ background: 'none', border: 'none', padding: '8px 12px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }} className="dropdown-item">
+                <Network size={15} color="var(--b400)" /> Link Mind Map
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setModalType('flowchart'); setIsLinkMenuOpen(false); }} style={{ background: 'none', border: 'none', padding: '8px 12px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }} className="dropdown-item">
+                <Workflow size={15} color="var(--prio-medium)" /> Link Flowchart
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setModalType('doc'); setIsLinkMenuOpen(false); }} style={{ background: 'none', border: 'none', padding: '8px 12px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }} className="dropdown-item">
+                <FileText size={15} color="var(--n600)" /> Link Document
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); setModalType('date_picker'); setIsLinkMenuOpen(false); }} style={{ background: 'none', border: 'none', padding: '8px 12px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }} className="dropdown-item">
+                <CalendarDays size={15} color="var(--g600)" /> Insert Date Badge
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 2px' }} />
+
+      {/* Group 6: Media & Tables */}
+      <div style={{ display: 'flex', gap: '2px' }}>
+        <button onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} className="toolbar-btn" title="Insert Table" style={toolbarBtnStyle(false)}><TableIcon size={17} /></button>
+        <button onClick={() => editor.chain().focus().setHorizontalRule().run()} className="toolbar-btn" title="Insert Divider" style={toolbarBtnStyle(false)}><Minus size={17} /></button>
         <button
           onClick={() => {
             const input = document.createElement('input');
@@ -591,107 +721,55 @@ export const MenuBar = ({ editor }: { editor: any }) => {
             };
             input.click();
           }}
-          className={`toolbar-btn`}
+          className="toolbar-btn"
           title="Insert Image"
           style={toolbarBtnStyle(false)}
         >
-          <ImageIcon size={18} />
+          <ImageIcon size={17} />
         </button>
-        <button onClick={(e) => { e.stopPropagation(); editor.chain().focus().insertContent({ type: 'toc' }).run(); }} className="toolbar-btn" title="Insert Table of Contents" style={toolbarBtnStyle(false)}><BookOpen size={18} /></button>
+        <button onClick={(e) => { e.stopPropagation(); editor.chain().focus().insertContent({ type: 'toc' }).run(); }} className="toolbar-btn" title="Insert Table of Contents" style={toolbarBtnStyle(false)}><BookOpen size={17} /></button>
       </div>
 
-      <div style={{ width: '1px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
-
+      {/* Export Menu */}
       <div style={{ position: 'relative' }}>
         <button
-          onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }}
+          onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); setIsEmbedMenuOpen(false); setIsLinkMenuOpen(false); }}
           className={`toolbar-btn ${isMenuOpen ? 'active' : ''}`}
-          title="More Options"
+          title="Export Document (PDF / Word)"
           style={toolbarBtnStyle(isMenuOpen)}
         >
-          <MoreVertical size={18} />
+          <FileDown size={17} />
         </button>
         {isMenuOpen && (
           <div style={{
-            position: 'absolute', top: '100%', right: 0, background: 'var(--n0)', 
-            border: '1px solid var(--border-color)', borderRadius: '4px', boxShadow: 'var(--shadow-dropdown)', 
-            padding: '4px 0', zIndex: 10, minWidth: '240px', display: 'flex', flexDirection: 'column',
+            position: 'absolute', top: '100%', right: 0, background: 'var(--n0)',
+            border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: 'var(--shadow-dropdown)',
+            padding: '4px 0', zIndex: 20, minWidth: '170px', display: 'flex', flexDirection: 'column',
             marginTop: '4px'
           }}>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setModalType('task'); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
-              className="dropdown-item"
-            >
-              <CheckSquare size={16} /> Add reference to task
-            </button>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setModalType('mindmap'); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
-              className="dropdown-item"
-            >
-              <Share2 size={16} /> Add reference to mind map
-            </button>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setModalType('flowchart'); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
-              className="dropdown-item"
-            >
-              <Share2 size={16} /> Add reference to flowchart
-            </button>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setModalType('doc'); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
-              className="dropdown-item"
-            >
-              <FileText size={16} /> Add reference to document
-            </button>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setModalType('daily_note'); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
-              className="dropdown-item"
-            >
-              <CalendarDays size={16} /> Add reference to daily note
-            </button>
-            <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }} />
-            <button 
-              onClick={(e) => { e.stopPropagation(); setModalType('embed_mindmap'); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
-              className="dropdown-item"
-            >
-              <Network size={16} /> Embed mind map
-            </button>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setModalType('embed_flowchart'); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
-              className="dropdown-item"
-            >
-              <FileImage size={16} /> Embed flowchart
-            </button>
-            <div style={{ height: '1px', backgroundColor: 'var(--border-color)', margin: '4px 0' }} />
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); exportToPDF(); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }}
               className="dropdown-item"
             >
-              <FileDown size={16} /> Export to PDF
+              <FileDown size={15} /> Export to PDF
             </button>
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); exportToWord(); setIsMenuOpen(false); }}
-              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}
+              style={{ background: 'none', border: 'none', padding: '8px 16px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '13px' }}
               className="dropdown-item"
             >
-              <FileText size={16} /> Export to Word
+              <FileText size={15} /> Export to Word
             </button>
           </div>
         )}
       </div>
 
-      <ReferenceModal 
-        isOpen={modalType !== null} 
-        onClose={() => setModalType(null)} 
-        type={modalType!} 
-        onSelect={handleSelect} 
+      <ReferenceModal
+        isOpen={modalType !== null}
+        onClose={() => setModalType(null)}
+        type={modalType!}
+        onSelect={handleSelect}
       />
     </div>
   );
@@ -701,7 +779,7 @@ const toolbarBtnStyle = (isActive: boolean): React.CSSProperties => ({
   background: isActive ? 'var(--b50)' : 'transparent',
   color: isActive ? 'var(--b500)' : 'var(--n500)',
   border: 'none',
-  padding: '6px',
+  padding: '5px',
   borderRadius: '4px',
   cursor: 'pointer',
   display: 'flex',
@@ -710,9 +788,133 @@ const toolbarBtnStyle = (isActive: boolean): React.CSSProperties => ({
   transition: 'all 0.1s'
 });
 
+interface SlashCommandItem {
+  id: string;
+  label: string;
+  description: string;
+  keywords: string;
+  action: (editor: any) => void;
+}
+
+const SLASH_COMMANDS: SlashCommandItem[] = [
+  {
+    id: 'embed_mindmap',
+    label: 'Embed Mind Map',
+    description: 'Insert an interactive Mind Map preview card',
+    keywords: 'mindmap embed diagram graph brainstorm',
+    action: () => window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type: 'embed_mindmap' } })),
+  },
+  {
+    id: 'embed_flowchart',
+    label: 'Embed Flowchart',
+    description: 'Insert an interactive Flowchart preview card',
+    keywords: 'flowchart embed diagram workflow process',
+    action: () => window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type: 'embed_flowchart' } })),
+  },
+  {
+    id: 'link_task',
+    label: 'Link Task',
+    description: 'Reference an existing task issue',
+    keywords: 'task issue ticket link reference',
+    action: () => window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type: 'task' } })),
+  },
+  {
+    id: 'link_mindmap',
+    label: 'Link Mind Map',
+    description: 'Insert a inline link to a Mind Map',
+    keywords: 'mindmap link reference',
+    action: () => window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type: 'mindmap' } })),
+  },
+  {
+    id: 'link_flowchart',
+    label: 'Link Flowchart',
+    description: 'Insert a inline link to a Flowchart',
+    keywords: 'flowchart link reference',
+    action: () => window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type: 'flowchart' } })),
+  },
+  {
+    id: 'link_doc',
+    label: 'Link Document',
+    description: 'Reference another document page',
+    keywords: 'doc document page link reference',
+    action: () => window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type: 'doc' } })),
+  },
+  {
+    id: 'link_daily_note',
+    label: 'Link Daily Note',
+    description: 'Reference a daily journal entry',
+    keywords: 'daily note journal log link reference',
+    action: () => window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type: 'daily_note' } })),
+  },
+  {
+    id: 'date',
+    label: 'Date Badge',
+    description: 'Pick a date from the mini calendar',
+    keywords: 'date calendar today deadline',
+    action: () => window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type: 'date_picker' } })),
+  },
+  {
+    id: 'tasklist',
+    label: 'Task Checklist',
+    description: 'To-do list with checkboxes',
+    keywords: 'todo task list checklist checkbox',
+    action: (ed) => ed.chain().focus().toggleTaskList().run(),
+  },
+  {
+    id: 'h1',
+    label: 'Heading 1',
+    description: 'Large section heading',
+    keywords: 'h1 heading title 1',
+    action: (ed) => ed.chain().focus().toggleHeading({ level: 1 }).run(),
+  },
+  {
+    id: 'h2',
+    label: 'Heading 2',
+    description: 'Medium section heading',
+    keywords: 'h2 heading subtitle 2',
+    action: (ed) => ed.chain().focus().toggleHeading({ level: 2 }).run(),
+  },
+  {
+    id: 'table',
+    label: 'Table (3×3)',
+    description: 'Insert a 3×3 table with header row',
+    keywords: 'table grid rows columns',
+    action: (ed) => ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+  },
+];
+
 export default function DocEditor({ initialContent, onUpdate, hideToolbar, borderless, onEditorReady, onFocus }: DocEditorProps) {
   const [showSearch, setShowSearch] = useState(false);
-  
+  const [slashMenu, setSlashMenu] = useState<{ open: boolean; query: string; rangeFrom: number; selectedIndex: number }>({
+    open: false,
+    query: '',
+    rangeFrom: 0,
+    selectedIndex: 0,
+  });
+
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestHtmlRef = useRef<string | null>(null);
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+
+  const flushPendingUpdate = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (latestHtmlRef.current !== null) {
+      const html = latestHtmlRef.current;
+      latestHtmlRef.current = null;
+      onUpdateRef.current(html);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      flushPendingUpdate();
+    };
+  }, [flushPendingUpdate]);
+
   const editor = useEditor({
     extensions: [
       SmartTabExtension,
@@ -720,7 +922,10 @@ export default function DocEditor({ initialContent, onUpdate, hideToolbar, borde
       EmbeddedDiagramNode,
       ReferenceNode,
       DateNode,
-      StarterKit,
+      StarterKit.configure({
+        link: false,
+        underline: false,
+      }),
       TextStyle,
       Color,
       Highlight.configure({ multicolor: true }),
@@ -733,15 +938,13 @@ export default function DocEditor({ initialContent, onUpdate, hideToolbar, borde
             return new InputRule({
               find: trigger,
               handler: ({ state, range, match }) => {
-                // We use setTimeout to ensure the transaction completes before opening the modal,
-                // preventing focus loss issues.
                 setTimeout(() => {
+                  setSlashMenu(s => ({ ...s, open: false }));
                   window.dispatchEvent(new CustomEvent('open-reference-modal', { detail: { type } }));
                 }, 10);
-                
+
                 const fullMatch = match[0];
                 const spaceMatch = fullMatch.match(/^\s/);
-                // Delete the shortcut text, preserving any leading space
                 if (spaceMatch) {
                   state.tr.delete(range.from + spaceMatch[0].length, range.to);
                 } else {
@@ -786,7 +989,39 @@ export default function DocEditor({ initialContent, onUpdate, hideToolbar, borde
     ],
     content: initialContent,
     onUpdate: ({ editor }) => {
-      onUpdate(editor.getHTML());
+      // Detect `/` slash command query before cursor
+      const { $from } = editor.state.selection;
+      const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
+      const slashMatch = textBefore.match(/(?:^|\s)\/([a-zA-Z0-9_]*)$/);
+      if (slashMatch) {
+        const query = slashMatch[1].toLowerCase();
+        const slashOffset = $from.pos - slashMatch[1].length - 1;
+        setSlashMenu({
+          open: true,
+          query,
+          rangeFrom: slashOffset,
+          selectedIndex: 0,
+        });
+      } else {
+        setSlashMenu(s => (s.open ? { ...s, open: false } : s));
+      }
+
+      // Debounce HTML serialization & IndexedDB writes to keep typing 60fps smooth
+      latestHtmlRef.current = editor.getHTML();
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = null;
+        if (latestHtmlRef.current !== null) {
+          const html = latestHtmlRef.current;
+          latestHtmlRef.current = null;
+          onUpdateRef.current(html);
+        }
+      }, 250);
+    },
+    onBlur: () => {
+      flushPendingUpdate();
     },
     onFocus: ({ editor }) => {
       if (onFocus) onFocus(editor);
@@ -794,7 +1029,7 @@ export default function DocEditor({ initialContent, onUpdate, hideToolbar, borde
     editorProps: {
       attributes: {
         class: 'tiptap-editor',
-        style: 'outline: none; min-height: 100%; font-size: 15px; line-height: 1.6; color: var(--text-primary);',
+        style: 'outline: none; min-height: 100%; font-size: 15px; line-height: 1.65; color: var(--text-primary);',
         spellcheck: 'true'
       },
       handleClick(_view, _pos, event) {
@@ -842,23 +1077,58 @@ export default function DocEditor({ initialContent, onUpdate, hideToolbar, borde
     }
   }, [editor, onEditorReady]);
 
+  const filteredSlashCommands = SLASH_COMMANDS.filter(cmd =>
+    !slashMenu.query ||
+    cmd.label.toLowerCase().includes(slashMenu.query) ||
+    cmd.keywords.includes(slashMenu.query)
+  );
+
+  const executeSlashCommand = (cmd: SlashCommandItem) => {
+    if (!editor) return;
+    const { from } = editor.state.selection;
+    editor.chain().focus().deleteRange({ from: slashMenu.rangeFrom, to: from }).run();
+    setSlashMenu(s => ({ ...s, open: false }));
+    cmd.action(editor);
+  };
+
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      height: borderless ? 'auto' : '100%', 
-      border: borderless ? 'none' : '1px solid var(--border-color)', 
-      borderRadius: borderless ? '0' : 'var(--radius)', 
-      overflow: borderless ? 'visible' : 'hidden', 
-      backgroundColor: 'var(--n0)', 
-      boxShadow: borderless ? 'none' : 'var(--shadow-card)' 
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: borderless ? 'auto' : '100%',
+      border: borderless ? 'none' : '1px solid var(--border-color)',
+      borderRadius: borderless ? '0' : 'var(--radius)',
+      overflow: borderless ? 'visible' : 'hidden',
+      backgroundColor: 'var(--n0)',
+      boxShadow: borderless ? 'none' : 'var(--shadow-card)'
     }}>
       {!hideToolbar && <MenuBar editor={editor} />}
-      <div 
-        style={{ flex: borderless ? 'none' : 1, overflowY: borderless ? 'visible' : 'auto', padding: borderless ? '0' : '32px 40px', cursor: 'text', position: 'relative' }} 
+      <div
+        style={{ flex: borderless ? 'none' : 1, overflowY: borderless ? 'visible' : 'auto', padding: borderless ? '0' : '28px 36px', cursor: 'text', position: 'relative' }}
         className="tiptap-container"
         onClick={() => editor?.commands.focus()}
         onKeyDown={(e) => {
+          if (slashMenu.open && filteredSlashCommands.length > 0) {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setSlashMenu(s => ({ ...s, selectedIndex: (s.selectedIndex + 1) % filteredSlashCommands.length }));
+              return;
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setSlashMenu(s => ({ ...s, selectedIndex: (s.selectedIndex - 1 + filteredSlashCommands.length) % filteredSlashCommands.length }));
+              return;
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+              e.preventDefault();
+              const chosen = filteredSlashCommands[slashMenu.selectedIndex] || filteredSlashCommands[0];
+              if (chosen) executeSlashCommand(chosen);
+              return;
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              setSlashMenu(s => ({ ...s, open: false }));
+              return;
+            }
+          }
+
           if (e.ctrlKey && !e.shiftKey && !e.altKey) {
             if (e.key === '1') { e.preventDefault(); editor?.commands.toggleHeading({ level: 1 }); }
             else if (e.key === '2') { e.preventDefault(); editor?.commands.toggleHeading({ level: 2 }); }
@@ -870,15 +1140,15 @@ export default function DocEditor({ initialContent, onUpdate, hideToolbar, borde
         {showSearch && (
           <div style={{
             position: 'absolute', top: '16px', right: '16px', zIndex: 50,
-            display: 'flex', alignItems: 'center', backgroundColor: 'var(--n0)', 
-            border: '1px solid var(--b400)', borderRadius: '4px', padding: '4px 8px', 
+            display: 'flex', alignItems: 'center', backgroundColor: 'var(--n0)',
+            border: '1px solid var(--b400)', borderRadius: '4px', padding: '4px 8px',
             boxShadow: 'var(--shadow-dropdown)', gap: '6px'
           }} onClick={e => e.stopPropagation()}>
             <Search size={16} color="var(--b500)" />
-            <input 
+            <input
               autoFocus
-              type="text" 
-              placeholder="Find in document..." 
+              type="text"
+              placeholder="Find in document..."
               onChange={(e) => editor?.commands.setSearchTerm(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
@@ -891,6 +1161,56 @@ export default function DocEditor({ initialContent, onUpdate, hideToolbar, borde
             />
           </div>
         )}
+
+        {/* Interactive Slash Command Menu */}
+        {slashMenu.open && filteredSlashCommands.length > 0 && (
+          <div
+            style={{
+              position: 'sticky',
+              top: '8px',
+              left: '0',
+              zIndex: 60,
+              width: '280px',
+              maxHeight: '260px',
+              overflowY: 'auto',
+              backgroundColor: 'var(--n0)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              boxShadow: 'var(--shadow-dropdown)',
+              padding: '6px',
+              marginBottom: '8px',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: '4px 8px', fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Insert / Command (↑↓ Enter)
+            </div>
+            {filteredSlashCommands.map((cmd, idx) => (
+              <button
+                key={cmd.id}
+                type="button"
+                onClick={() => executeSlashCommand(cmd)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: '6px 10px',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  backgroundColor: idx === slashMenu.selectedIndex ? 'var(--b50)' : 'transparent',
+                  color: idx === slashMenu.selectedIndex ? 'var(--b500)' : 'var(--n800)',
+                }}
+              >
+                <span style={{ fontSize: '13px', fontWeight: 600 }}>{cmd.label}</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{cmd.description}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <EditorContent editor={editor} />
       </div>
     </div>
