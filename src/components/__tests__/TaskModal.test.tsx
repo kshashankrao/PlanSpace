@@ -12,7 +12,14 @@ vi.mock('lucide-react', () => ({
   AlertCircle: () => <div data-testid="icon-alert-circle" />,
   Trash2: () => <div data-testid="icon-trash" />,
   MessageSquare: () => <div data-testid="icon-message" />,
-  MoreHorizontal: () => <div data-testid="icon-more" />
+  MoreHorizontal: () => <div data-testid="icon-more" />,
+  Image: () => <div data-testid="icon-image" />,
+  Network: () => <div data-testid="icon-network" />,
+  Workflow: () => <div data-testid="icon-workflow" />,
+  FileText: () => <div data-testid="icon-file-text" />,
+  Plus: () => <div data-testid="icon-plus" />,
+  ExternalLink: () => <div data-testid="icon-external-link" />,
+  Eye: () => <div data-testid="icon-eye" />,
 }));
 
 describe('TaskModal', () => {

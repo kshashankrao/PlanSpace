@@ -207,7 +207,7 @@ export default function CommandPalette() {
           title: m.title,
           subtitle: 'Mind Map',
           icon: <Network size={15} color="#0052CC" />,
-          onSelect: () => navigate(`/mindmap?id=${m.id}`),
+          onSelect: () => navigate(`/mindmap?map=${m.id}`),
         });
       }
     }
@@ -221,7 +221,7 @@ export default function CommandPalette() {
           title: f.title,
           subtitle: 'Flowchart',
           icon: <Workflow size={15} color="#00875A" />,
-          onSelect: () => navigate(`/flowchart?id=${f.id}`),
+          onSelect: () => navigate(`/flowchart?map=${f.id}`),
         });
       }
     }

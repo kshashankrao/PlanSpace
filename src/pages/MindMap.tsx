@@ -61,10 +61,11 @@ function MindMapContent() {
     if (mapParam && mindMaps?.some(m => m.id === mapParam)) {
       setActiveMindMapId(mapParam);
       setActiveView('canvas');
+      setSearchParams({}, { replace: true });
     } else if (mindMaps && mindMaps.length > 0 && !activeMindMapId) {
       setActiveMindMapId(mindMaps[0].id);
     }
-  }, [mindMaps, activeMindMapId, mapParam]);
+  }, [mindMaps, activeMindMapId, mapParam, setSearchParams]);
 
   // If focusNodeId is in URL, make sure we switch to the MindMap that owns it
   useEffect(() => {
@@ -233,9 +234,18 @@ function MindMapContent() {
     e.stopPropagation();
     if (!window.confirm('Are you sure you want to delete this mind map?')) return;
 
+    const nodeIds = (await db.mindMapNodes.where('mindMapId').equals(id).toArray()).map(n => n.id);
     await db.mindMapNodes.where('mindMapId').equals(id).delete();
     await db.mindMapEdges.where('mindMapId').equals(id).delete();
     await db.mindMaps.delete(id);
+
+    const linkedTasks = await db.tasks.filter(t => t.mindMapId === id || (!!t.mindmapNodeId && nodeIds.includes(t.mindmapNodeId))).toArray();
+    for (const t of linkedTasks) {
+      await db.tasks.update(t.id, {
+        mindMapId: t.mindMapId === id ? undefined : t.mindMapId,
+        mindmapNodeId: t.mindmapNodeId && nodeIds.includes(t.mindmapNodeId) ? undefined : t.mindmapNodeId,
+      });
+    }
 
     if (activeMindMapId === id) {
       setActiveMindMapId(null);

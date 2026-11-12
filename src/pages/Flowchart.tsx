@@ -697,7 +697,7 @@ export default function Flowchart() {
   const [isSendingDiagram, setIsSendingDiagram] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const mapParam = searchParams.get('map');
 
   const flowcharts = useLiveQuery(() => db.flowcharts.orderBy('createdAt').reverse().toArray());
@@ -707,6 +707,7 @@ export default function Flowchart() {
     if (mapParam && flowcharts?.some(f => f.id === mapParam)) {
       setActiveFlowchartId(mapParam);
       setActiveView('canvas');
+      setSearchParams({}, { replace: true });
     } else if (flowcharts && flowcharts.length > 0 && !activeFlowchartId) {
       setActiveFlowchartId(flowcharts[0].id);
     } else if (flowcharts && flowcharts.length === 0) {
@@ -714,14 +715,22 @@ export default function Flowchart() {
       db.flowcharts.add({ id: newId, title: 'Main Flowchart', createdAt: Date.now(), updatedAt: Date.now() })
         .then(() => setActiveFlowchartId(newId));
     }
-  }, [flowcharts, activeFlowchartId, mapParam]);
+  }, [flowcharts, activeFlowchartId, mapParam, setSearchParams]);
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!window.confirm('Delete this flowchart?')) return;
+    const nodeIds = (await db.flowchartNodes.where('flowchartId').equals(id).toArray()).map(n => n.id);
     await db.flowchartNodes.where('flowchartId').equals(id).delete();
     await db.flowchartEdges.where('flowchartId').equals(id).delete();
     await db.flowcharts.delete(id);
+    const linkedTasks = await db.tasks.filter(t => t.flowchartId === id || (!!t.flowchartNodeId && nodeIds.includes(t.flowchartNodeId))).toArray();
+    for (const t of linkedTasks) {
+      await db.tasks.update(t.id, {
+        flowchartId: t.flowchartId === id ? undefined : t.flowchartId,
+        flowchartNodeId: t.flowchartNodeId && nodeIds.includes(t.flowchartNodeId) ? undefined : t.flowchartNodeId,
+      });
+    }
     if (activeFlowchartId === id) { setActiveFlowchartId(null); setActiveView('list'); }
     setOpenDropdownId(null);
   };

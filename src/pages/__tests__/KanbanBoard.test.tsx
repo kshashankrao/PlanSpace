@@ -3,9 +3,11 @@ import { describe, it, expect, vi } from 'vitest';
 import KanbanBoard from '../KanbanBoard';
 
 vi.mock('../../db/db', () => ({
+  formatTaskId: (id: string) => `TSK-${id}`,
   db: {
     tasks: {
       update: vi.fn(),
+      add: vi.fn(),
     }
   }
 }));

@@ -91,17 +91,21 @@ export default function DailyNotes() {
   const [viewMode, setViewMode] = useState<'single' | 'rolling'>('single');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [globalEditor, setGlobalEditor] = useState<any>(null);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Handle URL deep links
   useEffect(() => {
     const urlDate = searchParams.get('date');
-    if (urlDate && urlDate !== activeDate) {
+    if (urlDate) {
       setActiveDate(urlDate);
       setViewMode('single');
-      setCurrentMonth(new Date(urlDate));
+      const [y, m] = urlDate.split('-').map(Number);
+      if (y && m) {
+        setCurrentMonth(new Date(y, m - 1, 1));
+      }
+      setSearchParams({}, { replace: true });
     }
-  }, [searchParams, activeDate]);
+  }, [searchParams, setSearchParams]);
 
   // Calendar State
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -232,8 +236,7 @@ export default function DailyNotes() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
               {calendarDays.map((dateStr, i) => {
                 if (!dateStr) return <div key={`empty-${i}`} />;
-                const d = new Date(dateStr);
-                const dayNum = d.getDate();
+                const dayNum = parseInt(dateStr.split('-')[2], 10);
                 const isToday = dateStr === getFormattedDate(new Date());
                 const isSelected = viewMode === 'single' && dateStr === activeDate;
                 const hasNote = notesMap.has(dateStr);

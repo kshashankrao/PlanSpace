@@ -287,7 +287,8 @@ const SmartTabExtension = Extension.create({
 });
 
 const getDisplayDate = (dateStr: string) => {
-  const d = new Date(dateStr);
+  const parts = dateStr.split('-').map(Number);
+  const d = parts.length === 3 ? new Date(parts[0], parts[1] - 1, parts[2]) : new Date(dateStr);
   return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 };
 
